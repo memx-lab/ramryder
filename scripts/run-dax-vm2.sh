@@ -6,15 +6,17 @@ IMGDIR=$HOME/images
 OSIMGF=$IMGDIR/u20s2.qcow2
 # qemu binary
 QEMU_BIN=/home/yaz093/qemu/build/qemu-system-x86_64
-CPU_BIND='taskset -c 26-31,66-71'
+#CPU_BIND_12='taskset -c 26-31,66-71'
+CPU_BIND_20='taskset -c 30-39,70-79'
+#CPU_BIND_24='taskset -c 28-39,68-79'
 
-sudo $CPU_BIND $QEMU_BIN \
+sudo $CPU_BIND_20 $QEMU_BIN \
     -name "VM-T2" \
     -enable-kvm \
     -cpu host \
-    -smp 12 \
-    -m 8G \
-    -object memory-backend-file,id=mem1,share=on,mem-path=/dev/dax0.0,size=8G,align=2M \
+    -smp 20 \
+    -m 20G \
+    -object memory-backend-file,id=mem1,share=on,mem-path=/dev/dax0.0,size=20G,align=2M \
     -numa node,memdev=mem1 \
     -device virtio-scsi-pci,id=scsi0 \
     -device scsi-hd,drive=hd0 \

@@ -6,13 +6,15 @@ IMGDIR=$HOME/images
 OSIMGF=$IMGDIR/u20s.qcow2
 # qemu binary
 QEMU_BIN=/home/yaz093/qemu/build/qemu-system-x86_64
-CPU_BIND='taskset -c 20-25,60-65' 
+#CPU_BIND_12='taskset -c 20-25,60-65'
+#CPU_BIND_16='taskset -c 20-27,60-67'
+CPU_BIND_20='taskset -c 20-29,60-69'  
 
-sudo $CPU_BIND $QEMU_BIN \
+sudo $CPU_BIND_20 $QEMU_BIN \
     -name "VM-T1" \
     -enable-kvm \
     -cpu host \
-    -smp 12 \
+    -smp 20 \
     -m 44G \
     -object memory-backend-file,id=mem1,share=on,mem-path=/dev/dax1.0,size=44G,align=2M \
     -numa node,memdev=mem1 \
