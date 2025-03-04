@@ -21,8 +21,8 @@ sudo $CPU_BIND_24 $QEMU_BIN \
     -object memory-backend-file,id=mem0,share=on,mem-path=/dev/dax0.0,size=20G,align=2M \
     -object memory-backend-file,id=mem1,share=on,mem-path=/dev/dax1.0,size=20G,align=2M \
     -object memory-backend-file,id=mem2,share=on,mem-path=/dev/dax1.0,size=20G,align=2M,offset=20G \
-    -numa node,nodeid=0,memdev=mem0,cpus=0-23,tier-id=0,dax-id=0,seg-id=1 \
-    -numa node,nodeid=1,memdev=mem1,tier-id=0,dax-id=1,seg-id=1 \
+    -numa node,nodeid=0,memdev=mem0,cpus=0-23,tier-id=0,dax-id=0,seg-id=0 \
+    -numa node,nodeid=1,memdev=mem1,tier-id=0,dax-id=1,seg-id=0 \
     -numa node,nodeid=2,memdev=mem2,tier-id=0,dax-id=1,seg-id=1 \
     -device virtio-scsi-pci,id=scsi0 \
     -device scsi-hd,drive=hd0 \
