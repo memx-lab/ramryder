@@ -1,0 +1,48 @@
+<domain type='kvm' xmlns:qemu="http://libvirt.org/schemas/domain/qemu/1.0">
+  <name>VM-NUMA-1</name>
+  <memory unit='GiB'>60</memory>
+  <vcpu placement='static'>40</vcpu>
+
+  <os>
+    <type arch='x86_64' machine='q35'>hvm</type>
+  </os>
+
+  <features>
+    <acpi/>
+    <apic/>
+  </features>
+
+  <cpu mode='host-passthrough'>
+    <topology sockets='1' cores='40' threads='1'/>
+  </cpu>
+
+  <clock offset='utc'/>
+
+  <devices>
+    <emulator>/usr/bin/qemu-system-x86_64</emulator>
+
+    <!-- system image -->
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2' cache='none' io='native'/>
+      <source file='/home/yaz093/images/u20s.qcow2'/>
+      <target dev='vda' bus='virtio'/>
+    </disk>
+
+    <serial type='pty'>
+      <target port='0'/>
+    </serial>
+
+    <console type='pty'>
+      <target type='serial' port='0'/>
+    </console>
+
+    <memballoon model='none'/>
+  </devices>
+
+  <qemu:commandline>
+      <qemu:arg value='-netdev'/>
+      <qemu:arg value='user,id=hostnet0,hostfwd=tcp::2806-:22'/>
+      <qemu:arg value='-device'/>
+      <qemu:arg value='virtio-net-pci,netdev=hostnet0,id=net0,bus=pcie.0,addr=0x2'/>
+  </qemu:commandline>
+</domain>
