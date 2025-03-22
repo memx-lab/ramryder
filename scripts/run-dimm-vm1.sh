@@ -3,11 +3,10 @@
 # unique ID for each VM
 VMID=1
 
-PRJ_DIR="$(dirname "$(cd "$(dirname "$0")" && pwd)")"
-
+SOCK_PATH=/var/run
 NAME=VM-NUMA-$VMID
-QMP_SOCK=$PRJ_DIR/qmp-sock-$VMID
-QGA_SOCK=$PRJ_DIR/qga-sock-$VMID
+QMP_SOCK=$SOCK_PATH/qmp-sock-$VMID
+QGA_SOCK=$SOCK_PATH/qga-sock-$VMID
 
 # image directory
 IMGDIR=$HOME/images
