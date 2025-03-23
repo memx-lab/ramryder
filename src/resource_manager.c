@@ -1,13 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <json-c/json.h>
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/un.h>
 #include <sys/epoll.h>
 #include <signal.h>
+#include <json-c/json.h>
 
 #include "memory_resource.h"
 
@@ -18,22 +18,24 @@
 #define SERVER_SOCKET "/var/run/resource_manager.sock"
 #define BUFFER_SIZE 1024
 #define MAX_EVENTS 10
-int server_fd = -1;
-int epoll_fd = -1;
+static int g_server_fd = -1;
+static int g_epoll_fd = -1;
 
-void handle_signal(int signum __attribute__((unused))) {
-    if (server_fd != -1) {
-        close(server_fd);
+static void handle_signal(int signum __attribute__((unused)))
+{
+    if (g_server_fd != -1) {
+        close(g_server_fd);
         unlink(SERVER_SOCKET);
     }
-    if (epoll_fd != -1) {
-        close(epoll_fd);
+    if (g_epoll_fd != -1) {
+        close(g_epoll_fd);
     }
     printf("\nResource Manager Server shutting down...\n");
     exit(0);
 }
 
-int connect_to_socket(const char *socket_path) {
+static int connect_to_socket(const char *socket_path)
+{
     int sockfd;
     struct sockaddr_un addr;
 
@@ -55,7 +57,8 @@ int connect_to_socket(const char *socket_path) {
     return sockfd;
 }
 
-char *send_command(const char *socket_path, const char *command) {
+static char *send_command(const char *socket_path, const char *command)
+{
     int sockfd = connect_to_socket(socket_path);
     if (sockfd < 0) return NULL;
 
@@ -66,16 +69,18 @@ char *send_command(const char *socket_path, const char *command) {
     return response;
 }
 
-char *query_vm_status() {
+static char *query_vm_status(void)
+{
     json_object *cmd = json_object_new_object();
-    json_object_object_add(cmd, "execute", json_object_new_string("guest-info"));
+    json_object_object_add(cmd, "execute", json_object_new_string("guest-get-meminfo"));
     const char *command = json_object_to_json_string(cmd);
     char *response = send_command(QGA_SOCKET, command);
     json_object_put(cmd);
     return response;
 }
 
-char *hotplug_dimm(int size_mb __attribute__((unused))) {
+static char *hotplug_dimm(int size_mb __attribute__((unused)))
+{
     json_object *cmd = json_object_new_object();
     json_object *args = json_object_new_object();
     
@@ -92,12 +97,16 @@ char *hotplug_dimm(int size_mb __attribute__((unused))) {
     return response;
 }
 
-void start_server() {
+static void start_server(void)
+{
+    int num_events = 0;
+    char *response = NULL;
+    char buffer[BUFFER_SIZE] = {0};
     struct sockaddr_un server_addr;
     struct epoll_event event, events[MAX_EVENTS];
 
-    server_fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (server_fd < 0) {
+    g_server_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (g_server_fd < 0) {
         perror("Server socket creation failed");
         exit(EXIT_FAILURE);
     }
@@ -107,25 +116,25 @@ void start_server() {
     strncpy(server_addr.sun_path, SERVER_SOCKET, sizeof(server_addr.sun_path) - 1);
     unlink(SERVER_SOCKET);
 
-    if (bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+    if (bind(g_server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
         perror("Server bind failed");
         exit(EXIT_FAILURE);
     }
 
-    if (listen(server_fd, 5) < 0) {
+    if (listen(g_server_fd, 5) < 0) {
         perror("Server listen failed");
         exit(EXIT_FAILURE);
     }
 
-    epoll_fd = epoll_create1(0);
-    if (epoll_fd == -1) {
+    g_epoll_fd = epoll_create1(0);
+    if (g_epoll_fd == -1) {
         perror("epoll_create1 failed");
         exit(EXIT_FAILURE);
     }
 
     event.events = EPOLLIN;
-    event.data.fd = server_fd;
-    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, server_fd, &event) == -1) {
+    event.data.fd = g_server_fd;
+    if (epoll_ctl(g_epoll_fd, EPOLL_CTL_ADD, g_server_fd, &event) == -1) {
         perror("epoll_ctl failed");
         exit(EXIT_FAILURE);
     }
@@ -133,22 +142,20 @@ void start_server() {
     printf("Resource Manager Server started. Waiting for client requests...\n");
 
     while (1) {
-        int num_events = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
+        num_events = epoll_wait(g_epoll_fd, events, MAX_EVENTS, -1);
         for (int i = 0; i < num_events; i++) {
-            if (events[i].data.fd == server_fd) {
+            if (events[i].data.fd == g_server_fd) {
                 struct sockaddr_un client_addr;
                 socklen_t client_len = sizeof(client_addr);
-                int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_len);
+                int client_fd = accept(g_server_fd, (struct sockaddr *)&client_addr, &client_len);
                 if (client_fd < 0) {
                     perror("Client accept failed");
                     continue;
                 }
 
-                char buffer[BUFFER_SIZE] = {0};
                 recv(client_fd, buffer, BUFFER_SIZE, 0);
                 printf("Received command: %s\n", buffer);
 
-                char *response = NULL;
                 if (strcmp(buffer, "query") == 0) {
                     response = query_vm_status();
                 } else if (strcmp(buffer, "hotplug") == 0) {

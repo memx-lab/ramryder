@@ -13,8 +13,8 @@ all: $(TARGETS)
 resource_manager: $(OBJ_MANAGER)
 	$(CC) $(CFLAGS) -o resource_manager $(OBJ_MANAGER) $(LDFLAGS)
 
-resource_manager_client: $(OBJ_CLIENT)
-	$(CC) $(CFLAGS) -o resource_client $(OBJ_CLIENT)
+resource_client: $(OBJ_CLIENT)
+	$(CC) $(CFLAGS) -o resource_client $(OBJ_CLIENT) $(LDFLAGS)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@

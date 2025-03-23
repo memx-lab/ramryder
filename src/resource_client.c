@@ -5,11 +5,27 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/un.h>
+#include <json-c/json.h>
 
 #define SERVER_SOCKET "/var/run/resource_manager.sock"
 #define BUFFER_SIZE 1024
 
-void send_command(const char *command) {
+static void print_results(char* results)
+{
+    json_object *parsed_json;
+
+    printf("Server Response:\n");
+    parsed_json = json_tokener_parse(results);
+    if (parsed_json) {
+        printf("%s\n", json_object_to_json_string_ext(parsed_json, JSON_C_TO_STRING_PRETTY));
+        json_object_put(parsed_json);
+    } else {
+        printf("%s\n", results);
+    }
+}
+
+static void send_command(const char *command)
+{
     int sockfd;
     struct sockaddr_un addr;
     char buffer[BUFFER_SIZE];
@@ -33,14 +49,13 @@ void send_command(const char *command) {
     send(sockfd, command, strlen(command), 0);
     memset(buffer, 0, BUFFER_SIZE);
     recv(sockfd, buffer, BUFFER_SIZE, 0);
-    
-    printf("Server Response:\n");
-    printf("%s\n", buffer);
+    print_results(buffer);
     
     close(sockfd);
 }
 
-int main() {
+int main()
+{
     char command[256];
 
     printf("Enter command (query/hotplug/memory): ");
