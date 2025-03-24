@@ -116,7 +116,7 @@ int memory_manager_init(void) {
     char buffer[DEV_INFO_SIZE];
 
     if (load_config() != 0) {
-        fprintf(stderr, "Failed to load configuration\n");
+        perror("Failed to load configuration\n");
         return -1;
     }
 

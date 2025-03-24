@@ -7,25 +7,21 @@
 #include <sys/un.h>
 #include <sys/epoll.h>
 #include <signal.h>
-#include <assert.h>
-#include <json-c/json.h>
 #include "memory_resource.h"
+#include "util_socket.h"
+#include "qemu_agent.h"
+#include "guest_agent.h"
 
-#define QGA_SOCKET "/var/run/qga-sock-1"
-#define QMP_SOCKET "/var/run/qmp-sock-1"
 #define SERVER_SOCKET "/var/run/resource_manager.sock"
-#define BUFFER_SIZE 1024
 #define MAX_EVENTS 10
 
-static int g_guest_agent_fd = -1;
 static int g_server_fd = -1;
 static int g_epoll_fd = -1;
 
 static void handle_signal(int signum __attribute__((unused)))
 {
-    if (g_guest_agent_fd != -1) {
-        close(g_guest_agent_fd);
-    }
+    printf("\nResource Manager shutting down...\n");
+
     if (g_server_fd != -1) {
         close(g_server_fd);
         unlink(SERVER_SOCKET);
@@ -33,91 +29,11 @@ static void handle_signal(int signum __attribute__((unused)))
     if (g_epoll_fd != -1) {
         close(g_epoll_fd);
     }
-    printf("\nResource Manager Server shutting down...\n");
+    guest_agent_cleanup();
     exit(0);
 }
 
-static int connect_to_socket(const char *socket_path)
-{
-    int sockfd;
-    struct sockaddr_un addr;
-
-    sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (sockfd < 0) {
-        perror("Socket creation failed");
-        return -1;
-    }
-
-    memset(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path) - 1);
-
-    if (connect(sockfd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        perror("Socket connection failed");
-        close(sockfd);
-        return -1;
-    }
-    return sockfd;
-}
-
-static char *send_command_qemu(const char *command)
-{
-    int sockfd = connect_to_socket(QMP_SOCKET);
-    if (sockfd < 0) return NULL;
-
-    send(sockfd, command, strlen(command), 0);
-    char *response = malloc(BUFFER_SIZE);
-    recv(sockfd, response, BUFFER_SIZE, 0);
-    close(sockfd);
-    return response;
-}
-
-/*
- * Set up long-live connection for guest agent.
- */
-static char *send_command_guest(const char *command)
-{
-    if (g_guest_agent_fd < 0) {
-        g_guest_agent_fd = connect_to_socket(QGA_SOCKET);
-    }
-
-    assert(g_guest_agent_fd >= 0);
-
-    send(g_guest_agent_fd, command, strlen(command), 0);
-    char *response = malloc(BUFFER_SIZE);
-    recv(g_guest_agent_fd, response, BUFFER_SIZE, 0);
-    return response;
-}
-
-static char *query_vm_status(void)
-{
-    json_object *cmd = json_object_new_object();
-    json_object_object_add(cmd, "execute", json_object_new_string("guest-get-meminfo"));
-    const char *command = json_object_to_json_string(cmd);
-    char *response = send_command_guest(command);
-    json_object_put(cmd);
-    return response;
-}
-
-static char *hotplug_dimm(int size_mb __attribute__((unused)))
-{
-    json_object *cmd = json_object_new_object();
-    json_object *args = json_object_new_object();
-    
-    json_object_object_add(args, "driver", json_object_new_string("pc-dimm"));
-    json_object_object_add(args, "id", json_object_new_string("dimm1"));
-    json_object_object_add(args, "memdev", json_object_new_string("mem1"));
-    
-    json_object_object_add(cmd, "execute", json_object_new_string("device_add"));
-    json_object_object_add(cmd, "arguments", args);
-    
-    const char *command = json_object_to_json_string(cmd);
-    char *response = send_command_qemu(command);
-    json_object_put(cmd);
-    return response;
-}
-
-static void start_server(void)
+static void start_rpc_server(void)
 {
     int num_events = 0;
     char *response = NULL;
@@ -179,7 +95,7 @@ static void start_server(void)
                 if (strcmp(buffer, "query") == 0) {
                     response = query_vm_status();
                 } else if (strcmp(buffer, "hotplug") == 0) {
-                    response = hotplug_dimm(512);
+                    response = hotplug_dimm();
                 } else if (strcmp(buffer, "memory") == 0) {
                     response = malloc(BUFFER_SIZE);
                     get_memory_resource(response, BUFFER_SIZE);
@@ -195,12 +111,21 @@ static void start_server(void)
     }
 }
 
-int main() {
+int main()
+{
+
     signal(SIGINT, handle_signal);
 
-    memory_manager_init();
+    if (memory_manager_init() != 0) {
+        exit(EXIT_FAILURE);
+    }
 
-    start_server();
+    /* Only init guest agent as it uses long-lived connection */
+    if (guest_agent_init() != 0) {
+        exit(EXIT_FAILURE);
+    }
+
+    start_rpc_server();
 
     return 0;
 }
