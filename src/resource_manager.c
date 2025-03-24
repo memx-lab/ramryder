@@ -11,6 +11,7 @@
 #include "util_socket.h"
 #include "qemu_agent.h"
 #include "guest_agent.h"
+#include "guest_monitor.h"
 
 #define SERVER_SOCKET "/var/run/resource_manager.sock"
 #define MAX_EVENTS 10
@@ -18,10 +19,8 @@
 static int g_server_fd = -1;
 static int g_epoll_fd = -1;
 
-static void handle_signal(int signum __attribute__((unused)))
+static void stop_rpc_server(void)
 {
-    printf("\nResource Manager shutting down...\n");
-
     if (g_server_fd != -1) {
         close(g_server_fd);
         unlink(SERVER_SOCKET);
@@ -29,8 +28,6 @@ static void handle_signal(int signum __attribute__((unused)))
     if (g_epoll_fd != -1) {
         close(g_epoll_fd);
     }
-    guest_agent_cleanup();
-    exit(0);
 }
 
 static void start_rpc_server(void)
@@ -111,9 +108,18 @@ static void start_rpc_server(void)
     }
 }
 
+static void handle_signal(int signum __attribute__((unused)))
+{
+    printf("\nResource Manager shutting down...\n");
+
+    stop_rpc_server();
+    guest_agent_cleanup();
+    stop_guest_monitor();
+    exit(0);
+}
+
 int main()
 {
-
     signal(SIGINT, handle_signal);
 
     if (memory_manager_init() != 0) {
@@ -122,6 +128,10 @@ int main()
 
     /* Only init guest agent as it uses long-lived connection */
     if (guest_agent_init() != 0) {
+        exit(EXIT_FAILURE);
+    }
+
+    if (start_guest_monitor() != 0) {
         exit(EXIT_FAILURE);
     }
 

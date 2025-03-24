@@ -1,8 +1,8 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -O2
-LDFLAGS = -ljson-c
+LDFLAGS = -ljson-c -lpthread
 TARGETS = resource_manager resource_client
-SRC_MANAGER = resource_manager.c memory_resource.c guest_agent.c qemu_agent.c util_socket.c
+SRC_MANAGER = resource_manager.c memory_resource.c guest_agent.c guest_monitor.c qemu_agent.c util_socket.c
 SRC_CLIENT = resource_client.c
 OBJ_MANAGER = $(SRC_MANAGER:.c=.o)
 OBJ_CLIENT = $(SRC_CLIENT:.c=.o)
