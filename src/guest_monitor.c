@@ -61,8 +61,6 @@ static void cloud_db_client_send(const char *data)
     res = curl_easy_perform(g_curl);
     if (res != CURLE_OK) {
         fprintf(stderr, "InfluxDB request failed: %s\n", curl_easy_strerror(res));
-    } else {
-        printf("Data sent to InfluxDB Cloud: %s\n", data);
     }
 }
 
@@ -120,7 +118,7 @@ static void *query_memory_loop(void *arg __attribute__((unused)))
 void stop_guest_monitor(void)
 {
     running = 0;
-    pthread_join(query_thread, NULL);
+    //pthread_join(query_thread, NULL);
     if (enable_cloud_db) {
         cloud_db_client_cleanup();
     }
