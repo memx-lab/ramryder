@@ -7,22 +7,25 @@
 #include <sys/un.h>
 #include <sys/epoll.h>
 #include <signal.h>
+#include <assert.h>
 #include <json-c/json.h>
-
 #include "memory_resource.h"
-
 
 #define QGA_SOCKET "/var/run/qga-sock-1"
 #define QMP_SOCKET "/var/run/qmp-sock-1"
-
 #define SERVER_SOCKET "/var/run/resource_manager.sock"
 #define BUFFER_SIZE 1024
 #define MAX_EVENTS 10
+
+static int g_guest_agent_fd = -1;
 static int g_server_fd = -1;
 static int g_epoll_fd = -1;
 
 static void handle_signal(int signum __attribute__((unused)))
 {
+    if (g_guest_agent_fd != -1) {
+        close(g_guest_agent_fd);
+    }
     if (g_server_fd != -1) {
         close(g_server_fd);
         unlink(SERVER_SOCKET);
@@ -57,9 +60,9 @@ static int connect_to_socket(const char *socket_path)
     return sockfd;
 }
 
-static char *send_command(const char *socket_path, const char *command)
+static char *send_command_qemu(const char *command)
 {
-    int sockfd = connect_to_socket(socket_path);
+    int sockfd = connect_to_socket(QMP_SOCKET);
     if (sockfd < 0) return NULL;
 
     send(sockfd, command, strlen(command), 0);
@@ -69,12 +72,29 @@ static char *send_command(const char *socket_path, const char *command)
     return response;
 }
 
+/*
+ * Set up long-live connection for guest agent.
+ */
+static char *send_command_guest(const char *command)
+{
+    if (g_guest_agent_fd < 0) {
+        g_guest_agent_fd = connect_to_socket(QGA_SOCKET);
+    }
+
+    assert(g_guest_agent_fd >= 0);
+
+    send(g_guest_agent_fd, command, strlen(command), 0);
+    char *response = malloc(BUFFER_SIZE);
+    recv(g_guest_agent_fd, response, BUFFER_SIZE, 0);
+    return response;
+}
+
 static char *query_vm_status(void)
 {
     json_object *cmd = json_object_new_object();
     json_object_object_add(cmd, "execute", json_object_new_string("guest-get-meminfo"));
     const char *command = json_object_to_json_string(cmd);
-    char *response = send_command(QGA_SOCKET, command);
+    char *response = send_command_guest(command);
     json_object_put(cmd);
     return response;
 }
@@ -92,7 +112,7 @@ static char *hotplug_dimm(int size_mb __attribute__((unused)))
     json_object_object_add(cmd, "arguments", args);
     
     const char *command = json_object_to_json_string(cmd);
-    char *response = send_command(QMP_SOCKET, command);
+    char *response = send_command_qemu(command);
     json_object_put(cmd);
     return response;
 }
