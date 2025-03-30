@@ -122,7 +122,8 @@ int memory_manager_init(void) {
 
     init_memory_resource();
     get_memory_resource(buffer, DEV_INFO_SIZE);
+#ifdef ENABLE_DEBUG
     printf("%s", buffer);
-
+#endif
     return 0;
 }
