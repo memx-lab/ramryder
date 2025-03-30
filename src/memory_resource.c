@@ -2,10 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
-
 #include "memory_resource.h"
 
-#define DEFAULT_CONFIG "dax_memory.conf"
 #define MAX_DEVICES 10
 #define MAX_SEGMENTS 4096
 #define DEV_INFO_SIZE 1024
@@ -28,12 +26,12 @@ static struct memory_dax_dev mem_devs[MAX_DEVICES];
 static int g_dev_count = 0;
 static int g_segment_size = 0;
 
-static int load_config(void)
+static int memory_manager_load_config(const char* config_file)
 {
-    char line[256];
+    char line[512];
     FILE *file;
 
-    file = fopen(DEFAULT_CONFIG, "r");
+    file = fopen(config_file, "r");
     if (!file) {
         perror("Failed to open config file");
         return -1;
@@ -41,8 +39,9 @@ static int load_config(void)
     
     while (fgets(line, sizeof(line), file)) {
         if (line[0] == '#' || 
-            strncmp(line, "[global]", 8) == 0 ||
-            strncmp(line, "[devices]", 9) == 0) {
+            strncmp(line, "[global]", strlen("[global]")) == 0 ||
+            strncmp(line, "[devices]", strlen("[devices]")) == 0 ||
+            strncmp(line, "[clouddb]", strlen("[clouddb]")) == 0) {
             continue;
         }
         
@@ -112,16 +111,17 @@ void get_memory_resource(char *buffer, int buffer_size)
     }
 }
 
-int memory_manager_init(void) {
+int memory_manager_init(const char* config_file) {
     char buffer[DEV_INFO_SIZE];
 
-    if (load_config() != 0) {
-        perror("Failed to load configuration\n");
+    if (memory_manager_load_config(config_file) != 0) {
+        perror("Failed to load memory configuration\n");
         return -1;
     }
 
     init_memory_resource();
     get_memory_resource(buffer, DEV_INFO_SIZE);
+
 #ifdef ENABLE_DEBUG
     printf("%s", buffer);
 #endif

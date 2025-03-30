@@ -13,6 +13,7 @@
 #include "guest_agent.h"
 #include "guest_monitor.h"
 
+#define CONFIG_FILE "elasticmm.conf"
 #define SERVER_SOCKET "/var/run/resource_manager.sock"
 #define MAX_EVENTS 10
 
@@ -72,7 +73,7 @@ static void start_rpc_server(void)
         exit(EXIT_FAILURE);
     }
 
-    printf("Resource Manager Server started. Waiting for client requests...\n");
+    printf("Resource Manager RPC Server started. Waiting for client requests...\n");
 
     while (1) {
         num_events = epoll_wait(g_epoll_fd, events, MAX_EVENTS, -1);
@@ -122,7 +123,7 @@ int main()
 {
     signal(SIGINT, handle_signal);
 
-    if (memory_manager_init() != 0) {
+    if (memory_manager_init(CONFIG_FILE) != 0) {
         exit(EXIT_FAILURE);
     }
 
@@ -131,7 +132,7 @@ int main()
         exit(EXIT_FAILURE);
     }
 
-    if (start_guest_monitor() != 0) {
+    if (start_guest_monitor(CONFIG_FILE) != 0) {
         exit(EXIT_FAILURE);
     }
 

@@ -2,3 +2,4 @@
 scripts/log
 src/resource_client
 src/resource_manager
+src/elasticmm.conf

@@ -9,4 +9,7 @@
   #define unlikely(x) (x)
 #endif
 
+// counter related
+#define SECOND_IN_US 1000000
+
 #endif // UTIL_COMMON_H

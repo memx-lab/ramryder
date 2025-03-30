@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <string.h>
 #include <curl/curl.h>
 #include <json-c/json.h>
 #include "guest_agent.h"
@@ -12,20 +13,58 @@
 #include "util_common.h"
 
 // for monitor
-#define SECOND_IN_US 1000000
 static volatile int running = 1;
 static pthread_t monitor_thread;
 
 // for cloud db
-#define INFLUXDB_URL ""
-#define INFLUXDB_TOKEN ""
-
 static bool enable_cloud_db = false;
+static char *influxdb_url = NULL;
+static char *influxdb_token = NULL;
 static CURL *g_curl = NULL;
 struct curl_slist *g_headers = NULL;
 
+static int guest_monitor_load_config(const char* config_file)
+{
+    char line[512];
+    FILE *file;
+
+    file = fopen(config_file, "r");
+    if (!file) {
+        perror("Failed to open config file");
+        return -1;
+    }
+
+    while (fgets(line, sizeof(line), file)) {
+        if (line[0] == '#' ||
+            strncmp(line, "[global]", strlen("[global]")) == 0 ||
+            strncmp(line, "[devices]", strlen("[devices]")) == 0 ||
+            strncmp(line, "[clouddb]", strlen("[clouddb]")) == 0) {
+            continue;
+        }
+
+        char key[32], value1[256], value2[256];
+        if (sscanf(line, "%s %s %s", key, value1, value2) >= 2) {
+            if (strcmp(key, "enable_clouddb") == 0) {
+                enable_cloud_db = (strcmp(value1, "true") == 0 || strcmp(value1, "1") == 0);
+            } else if (strcmp(key, "influxdb_url") == 0) {
+                influxdb_url = strdup(value1);
+            } else if (strcmp(key, "influxdb_token") == 0) {
+                influxdb_token = strdup(value1);
+            }
+        }
+    }
+#ifdef ENABLE_DEBUG
+    printf("url: %s, size: %lu, token: %s, size: %lu\n",
+        influxdb_url, strlen(influxdb_url), influxdb_token, strlen(influxdb_token));
+#endif
+    fclose(file);
+    return 0;
+}
+
 static int cloud_db_client_init(void)
 {
+    char auth_header[512];
+
     g_curl = curl_easy_init();
     if (g_curl == NULL) {
         perror("Failed to init curl\n");
@@ -33,9 +72,10 @@ static int cloud_db_client_init(void)
     }
 
     g_headers = curl_slist_append(g_headers, "Content-Type: text/plain");
-    g_headers = curl_slist_append(g_headers, "Authorization: Token " INFLUXDB_TOKEN);
+    snprintf(auth_header, sizeof(auth_header), "Authorization: Token %s", influxdb_token);
+    g_headers = curl_slist_append(g_headers, auth_header);
 
-    curl_easy_setopt(g_curl, CURLOPT_URL, INFLUXDB_URL);
+    curl_easy_setopt(g_curl, CURLOPT_URL, influxdb_url);
     curl_easy_setopt(g_curl, CURLOPT_HTTPHEADER, g_headers);
 
     return 0;
@@ -49,6 +89,14 @@ static void cloud_db_client_cleanup(void)
 
     if (g_curl) {
         curl_easy_cleanup(g_curl);
+    }
+
+    if (influxdb_url) {
+        free(influxdb_url);
+    }
+
+    if (influxdb_token) {
+        free(influxdb_token);
     }
 }
 
@@ -142,8 +190,13 @@ void stop_guest_monitor(void)
     }
 }
 
-int start_guest_monitor(void)
+int start_guest_monitor(const char* config_file)
 {
+    if (guest_monitor_load_config(config_file) != 0) {
+        perror("Failed to load monitor configuration\n");
+        return -1;
+    }
+
     if (enable_cloud_db) {
         if (cloud_db_client_init() != 0) {
             perror("Failed to init cloud db client\n");
