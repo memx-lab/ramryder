@@ -15,8 +15,8 @@ struct memory_segment {
 
 struct memory_dax_dev {
     char dev_path[256];
-    int total_size;
-    int segment_size;
+    int total_size_mb;
+    int segment_size_mb;
     int total_segments;
     int used_segments;
     struct memory_segment segments[MAX_SEGMENTS];
@@ -24,7 +24,7 @@ struct memory_dax_dev {
 
 static struct memory_dax_dev mem_devs[MAX_DEVICES];
 static int g_dev_count = 0;
-static int g_segment_size = 0;
+static int g_segment_size_mb = 0;
 
 static int memory_manager_load_config(const char* config_file)
 {
@@ -47,10 +47,10 @@ static int memory_manager_load_config(const char* config_file)
         
         char key[32], value1[256], value2[256];
         if (sscanf(line, "%s %s %s", key, value1, value2) >= 2) {
-            if (strcmp(key, "segment_size") == 0) {
-                g_segment_size = atoi(value1);
-                if (g_segment_size <= 0) {
-                    fprintf(stderr, "Invalid segment size: %d\n", g_segment_size);
+            if (strcmp(key, "segment_size_mb") == 0) {
+                g_segment_size_mb = atoi(value1);
+                if (g_segment_size_mb <= 0) {
+                    fprintf(stderr, "Invalid segment size: %d\n", g_segment_size_mb);
                     fclose(file);
                     return -1;
                 }
@@ -62,18 +62,18 @@ static int memory_manager_load_config(const char* config_file)
                 }
                 struct memory_dax_dev mem_device;
                 if (sscanf(value1, "path=%255s", mem_device.dev_path) != 1 ||
-                    sscanf(value2, "size=%d", &mem_device.total_size) != 1) {
+                    sscanf(value2, "size_mb=%d", &mem_device.total_size_mb) != 1) {
                     fprintf(stderr, "Invalid device entry: %s %s\n", value1, value2);
                     fclose(file);
                     return -1;
                 }
-                if (mem_device.total_size <= 0) {
-                    fprintf(stderr, "Invalid device size: %d\n", mem_device.total_size);
+                if (mem_device.total_size_mb <= 0) {
+                    fprintf(stderr, "Invalid device size: %d\n", mem_device.total_size_mb);
                     fclose(file);
                     return -1;
                 }
-                mem_device.segment_size = g_segment_size;
-                mem_device.total_segments = mem_device.total_size / mem_device.segment_size;
+                mem_device.segment_size_mb = g_segment_size_mb;
+                mem_device.total_segments = mem_device.total_size_mb / mem_device.segment_size_mb;
                 mem_devs[g_dev_count++] = mem_device;
             }
         }
@@ -82,14 +82,22 @@ static int memory_manager_load_config(const char* config_file)
     return 0;
 }
 
-static void init_memory_resource(void)
+static int init_memory_resource(const char* config_file)
 {
-    int i;
+    int ret;
 
-    for (i = 0; i < g_dev_count; i++) {
-        mem_devs[i].total_segments = mem_devs[i].total_size / mem_devs[i].segment_size;
+    ret = memory_manager_load_config(config_file);
+    if (ret != 0) {
+        perror("Failed to load memory configuration\n");
+        return -1;
+    }
+
+    for (int i = 0; i < g_dev_count; i++) {
+        mem_devs[i].total_segments = mem_devs[i].total_size_mb / mem_devs[i].segment_size_mb;
         mem_devs[i].used_segments = 0;
     }
+
+    return 0;
 }
 
 void get_memory_resource(char *buffer, int buffer_size)
@@ -103,7 +111,7 @@ void get_memory_resource(char *buffer, int buffer_size)
     
     for (int i = 0; i < g_dev_count && offset < buffer_size; i++) {
         offset += snprintf(buffer + offset, buffer_size - offset, "%5d | %s | %9d | %12d | %8d | %9d\n", i,
-                           mem_devs[i].dev_path, mem_devs[i].total_size, mem_devs[i].segment_size,
+                           mem_devs[i].dev_path, mem_devs[i].total_size_mb, mem_devs[i].segment_size_mb,
                            mem_devs[i].used_segments, mem_devs[i].total_segments);
         if (offset >= buffer_size - 1) {
             break;
@@ -111,19 +119,21 @@ void get_memory_resource(char *buffer, int buffer_size)
     }
 }
 
-int memory_manager_init(const char* config_file) {
-    char buffer[DEV_INFO_SIZE];
+int memory_manager_init(const char* config_file)
+{
+    int ret;
 
-    if (memory_manager_load_config(config_file) != 0) {
-        perror("Failed to load memory configuration\n");
+    ret = init_memory_resource(config_file);
+    if (ret != 0) {
+        perror("Failed to init memory resource\n");
         return -1;
     }
 
-    init_memory_resource();
-    get_memory_resource(buffer, DEV_INFO_SIZE);
-
 #ifdef ENABLE_DEBUG
+    char buffer[DEV_INFO_SIZE];
+    get_memory_resource(buffer, DEV_INFO_SIZE);
     printf("%s", buffer);
 #endif
+
     return 0;
 }
