@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <assert.h>
+#include "util_common.h"
 #include "memory_resource.h"
 
 #define MAX_DEVICES 10
@@ -14,19 +16,181 @@ struct memory_segment {
 };
 
 struct memory_dax_dev {
-    char dev_path[256];
+    char dev_path[DEV_PATH_LEN];
+    int tier_id;
+    int dev_id;
     int total_size_mb;
-    int segment_size_mb;
     int total_segments;
     int used_segments;
     struct memory_segment segments[MAX_SEGMENTS];
 };
 
-static struct memory_dax_dev mem_devs[MAX_DEVICES];
+static struct memory_dax_dev g_mem_devs[MAX_DEVICES];
 static int g_dev_count = 0;
 static int g_segment_size_mb = 0;
 
-static int memory_manager_load_config(const char* config_file)
+static inline bool is_aligned(int value, int alignment) {
+    return value > 0 && (value % alignment == 0);
+}
+
+static int find_free_segments(struct memory_dax_dev *mem_dev, int num_segments)
+{
+    int i = 0;
+
+    while (i <= mem_dev->total_segments - num_segments) {
+        int j = 0;
+        for (; j < num_segments; j++) {
+            if (mem_dev->segments[i + j].allocated) {
+                break;
+            }
+        }
+
+        if (j == num_segments) {
+            return i;
+        }
+
+        i = i + j + 1;
+    }
+
+    return -1;
+}
+
+static int _allocate_segments(struct memory_dax_dev *mem_dev, int num_segments, int vm_id)
+{
+    int start_index = -1;
+    int free_segments = 0;
+
+    assert(mem_dev != NULL);
+    assert(num_segments > 0);
+
+    free_segments = mem_dev->total_segments - mem_dev->used_segments;
+    if (free_segments < num_segments) {
+        fprintf(stderr, "No enough segments, free: %d, required: %d\n",
+                free_segments, num_segments);
+    }
+
+    start_index = find_free_segments(mem_dev, num_segments);
+    if (start_index == -1) {
+        perror("Cannot find required size in dev\n");
+        return -1;
+    }
+
+    for (int i = 0; i < num_segments; i++) {
+        mem_dev->segments[start_index + i].allocated = true;
+        mem_dev->segments[start_index + i].used_vm_id = vm_id;
+    }
+
+    mem_dev->used_segments += num_segments;
+    return start_index;
+}
+
+int memory_allocate_segments(int tier_id, int dev_id, int vm_id,
+                    int size_mb, struct memory_request *mem_req)
+{
+    struct memory_dax_dev *mem_dev = NULL;
+    int num_segments= 0, start_index = -1;
+
+    if (!is_aligned(size_mb, g_segment_size_mb)) {
+        fprintf(stderr, "Invalid size %d that should align in %dMB and be non-zero\n", 
+                size_mb, g_segment_size_mb);
+        return -1;
+    }
+
+    for (int i = 0; i < g_dev_count; i++) {
+        if (g_mem_devs[i].tier_id == tier_id && g_mem_devs[i].dev_id == dev_id) {
+            mem_dev = &g_mem_devs[i];
+            break;
+        }
+    }
+
+    if (mem_dev == NULL) {
+        fprintf(stderr, "Cannot find memory device with tier id %d and dev id: %d\n",
+                tier_id, dev_id);
+        return -1;
+    }
+
+    num_segments = size_mb / g_segment_size_mb;
+    start_index = _allocate_segments(mem_dev, num_segments, vm_id);
+    if (start_index < 0) {
+        fprintf(stderr, "Filed to alllocate segments\n");
+        return -1;
+    }
+
+    strncpy(mem_req->dev_path, mem_dev->dev_path, DEV_PATH_LEN);
+    mem_req->offset_mb = start_index * g_segment_size_mb;
+    mem_req->size_mb = num_segments * g_segment_size_mb;
+
+    printf("Allocated memory, dev: %s, offset: %dMB, size: %dMB\n",
+            mem_req->dev_path, mem_req->offset_mb, mem_req->size_mb);
+
+    return 0;
+}
+
+static int _release_segments(struct memory_dax_dev *mem_dev, int vm_id, 
+                        int start_index, int segment_count) {
+    for (int i = 0; i < segment_count; i++) {
+        int idx = start_index + i;
+
+        /* only release used segments by the VM with the id @vm_id */
+        if (idx >= 0 && idx < mem_dev->total_segments &&
+            mem_dev->segments[idx].allocated &&
+            mem_dev->segments[idx].used_vm_id == vm_id) {
+            mem_dev->segments[idx].allocated = false;
+            mem_dev->segments[idx].used_vm_id = -1;
+            mem_dev->used_segments--;
+        } else {
+            fprintf(stderr, "Filed to release segment, index %d, alloacted %d, vm id %d\n",
+                idx, mem_dev->segments[idx].allocated, mem_dev->segments[idx].used_vm_id);
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+int memory_release_segments(int tier_id, int dev_id, int vm_id, 
+                    int offset_mb, int size_mb)
+{
+    int ret;
+    int start_index, segment_count;
+    struct memory_dax_dev *mem_dev = NULL;
+
+    if (!is_aligned(size_mb, g_segment_size_mb) || !is_aligned(offset_mb, g_segment_size_mb)) {
+        fprintf(stderr, "Invalid size %d or offset %d that should align in %dMB and be non-zero\n", 
+                size_mb, offset_mb, g_segment_size_mb);
+        return -1;
+    }
+
+    for (int i = 0; i < g_dev_count; i++) {
+        if (g_mem_devs[i].tier_id == tier_id && g_mem_devs[i].dev_id == dev_id) {
+            mem_dev = &g_mem_devs[i];
+            break;
+        }
+    }
+
+    if (mem_dev == NULL) {
+        fprintf(stderr, "Cannot find memory device with tier id %d and dev id: %d\n",
+                tier_id, dev_id);
+        return -1;
+    }
+
+    start_index = offset_mb / g_segment_size_mb;
+    segment_count = size_mb / g_segment_size_mb;
+
+    ret = _release_segments(mem_dev, vm_id, start_index, segment_count);
+    if (ret < 0) {
+        fprintf(stderr, "Failed to release all segments, tier id: %d, dev id: %d, vm id: %d, offset: %dMB, size: %dMB\n",
+        tier_id, dev_id, vm_id, offset_mb, size_mb);   
+        return -1;
+    }
+
+    printf("Rleased memory, dev: %s, offset: %dMB, size: %dMB\n",
+            mem_dev->dev_path, offset_mb, size_mb);
+
+    return 0;
+}
+
+static int memory_load_config(const char* config_file)
 {
     char line[512];
     FILE *file;
@@ -45,8 +209,8 @@ static int memory_manager_load_config(const char* config_file)
             continue;
         }
         
-        char key[32], value1[256], value2[256];
-        if (sscanf(line, "%s %s %s", key, value1, value2) >= 2) {
+        char key[32], value1[128], value2[128], value3[128], value4[128];
+        if (sscanf(line, "%s %s %s %s %s", key, value1, value2, value3, value4) >= 2) {
             if (strcmp(key, "segment_size_mb") == 0) {
                 g_segment_size_mb = atoi(value1);
                 if (g_segment_size_mb <= 0) {
@@ -62,8 +226,10 @@ static int memory_manager_load_config(const char* config_file)
                 }
                 struct memory_dax_dev mem_device;
                 if (sscanf(value1, "path=%255s", mem_device.dev_path) != 1 ||
-                    sscanf(value2, "size_mb=%d", &mem_device.total_size_mb) != 1) {
-                    fprintf(stderr, "Invalid device entry: %s %s\n", value1, value2);
+                    sscanf(value2, "size_mb=%d", &mem_device.total_size_mb) != 1 ||
+                    sscanf(value3, "tier_id=%d", &mem_device.tier_id) != 1 ||
+                    sscanf(value4, "dev_id=%d", &mem_device.dev_id) != 1) {
+                    fprintf(stderr, "Invalid device entry: %s %s %s %s\n", value1, value2, value3, value4);
                     fclose(file);
                     return -1;
                 }
@@ -72,9 +238,11 @@ static int memory_manager_load_config(const char* config_file)
                     fclose(file);
                     return -1;
                 }
-                mem_device.segment_size_mb = g_segment_size_mb;
-                mem_device.total_segments = mem_device.total_size_mb / mem_device.segment_size_mb;
-                mem_devs[g_dev_count++] = mem_device;
+                if (mem_device.tier_id < 0 || mem_device.dev_id < 0) {
+                    fprintf(stderr, "Invalid tier id: %d or dev id: %d\n",
+                        mem_device.tier_id, mem_device.dev_id);
+                }
+                g_mem_devs[g_dev_count++] = mem_device;
             }
         }
     }
@@ -86,33 +254,35 @@ static int init_memory_resource(const char* config_file)
 {
     int ret;
 
-    ret = memory_manager_load_config(config_file);
+    ret = memory_load_config(config_file);
     if (ret != 0) {
         perror("Failed to load memory configuration\n");
         return -1;
     }
 
     for (int i = 0; i < g_dev_count; i++) {
-        mem_devs[i].total_segments = mem_devs[i].total_size_mb / mem_devs[i].segment_size_mb;
-        mem_devs[i].used_segments = 0;
+        g_mem_devs[i].total_segments = g_mem_devs[i].total_size_mb / g_segment_size_mb;
+        g_mem_devs[i].used_segments = 0;
     }
 
     return 0;
 }
 
-void get_memory_resource(char *buffer, int buffer_size)
+void memory_get_resource(char *buffer, int buffer_size)
 {
     if (g_dev_count == 0) {
         snprintf(buffer, buffer_size, "No memory devices initialized.\n");
         return;
     }
     
-    int offset = snprintf(buffer, buffer_size, "Index | Device Path | Size (MB) | Segment (MB) | Used Seg | Total Seg \n");
+    int offset = snprintf(buffer, buffer_size, "Index | Device Path | Size (MB) | Segment (MB) | Used Seg | Total Seg | Tier ID | Dev ID\n");
     
     for (int i = 0; i < g_dev_count && offset < buffer_size; i++) {
-        offset += snprintf(buffer + offset, buffer_size - offset, "%5d | %s | %9d | %12d | %8d | %9d\n", i,
-                           mem_devs[i].dev_path, mem_devs[i].total_size_mb, mem_devs[i].segment_size_mb,
-                           mem_devs[i].used_segments, mem_devs[i].total_segments);
+        offset += snprintf(buffer + offset, buffer_size - offset,
+                "%5d | %s | %9d | %12d | %8d | %9d | %7d | %6d\n",
+                i, g_mem_devs[i].dev_path, g_mem_devs[i].total_size_mb, g_segment_size_mb,
+                g_mem_devs[i].used_segments, g_mem_devs[i].total_segments,
+                g_mem_devs[i].tier_id, g_mem_devs[i].dev_id);
         if (offset >= buffer_size - 1) {
             break;
         }
@@ -122,6 +292,10 @@ void get_memory_resource(char *buffer, int buffer_size)
 int memory_manager_init(const char* config_file)
 {
     int ret;
+#ifdef ENABLE_DEBUG
+    char buffer[DEV_INFO_SIZE];
+    struct memory_request mem_req;
+#endif
 
     ret = init_memory_resource(config_file);
     if (ret != 0) {
@@ -130,9 +304,32 @@ int memory_manager_init(const char* config_file)
     }
 
 #ifdef ENABLE_DEBUG
-    char buffer[DEV_INFO_SIZE];
-    get_memory_resource(buffer, DEV_INFO_SIZE);
+    memory_get_resource(buffer, DEV_INFO_SIZE);
     printf("%s", buffer);
+
+    // TODO: move to unit tests
+    ret = memory_allocate_segments(0, 1, 0, 128, &mem_req);
+    assert(ret == 0);
+    assert(mem_req.offset_mb == 0);
+    assert(mem_req.size_mb == 128);
+
+    ret = memory_allocate_segments(0, 1, 0, 256, &mem_req);
+    assert(ret == 0);
+    assert(mem_req.offset_mb == 128);
+    assert(mem_req.size_mb == 256);
+
+    ret = memory_release_segments(0, 1, 0, 128, 128);
+    assert(ret == 0);
+
+    ret = memory_allocate_segments(0, 1, 0, 256, &mem_req);
+    assert(ret == 0);
+    assert(mem_req.offset_mb == 384);
+    assert(mem_req.size_mb == 256);
+
+    ret = memory_allocate_segments(0, 1, 0, 128, &mem_req);
+    assert(ret == 0);
+    assert(mem_req.offset_mb == 128);
+    assert(mem_req.size_mb == 128);
 #endif
 
     return 0;

@@ -96,7 +96,7 @@ static void start_rpc_server(void)
                     response = hotplug_dimm();
                 } else if (strcmp(buffer, "memory") == 0) {
                     response = malloc(BUFFER_SIZE);
-                    get_memory_resource(response, BUFFER_SIZE);
+                    memory_get_resource(response, BUFFER_SIZE);
                 } else {
                     response = strdup("Unknown command");
                 }
@@ -126,7 +126,7 @@ int main()
     if (memory_manager_init(CONFIG_FILE) != 0) {
         exit(EXIT_FAILURE);
     }
-
+#if 0
     /* Only init guest agent as it uses long-lived connection */
     if (guest_agent_init() != 0) {
         exit(EXIT_FAILURE);
@@ -135,7 +135,7 @@ int main()
     if (start_guest_monitor(CONFIG_FILE) != 0) {
         exit(EXIT_FAILURE);
     }
-
+#endif
     start_rpc_server();
 
     return 0;
