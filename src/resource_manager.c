@@ -20,8 +20,6 @@
 static int g_server_fd = -1;
 static int g_epoll_fd = -1;
 
-static int test_vm_id = 0;
-
 static void rpc_server_stop(void)
 {
     if (g_server_fd != -1) {
@@ -150,7 +148,6 @@ int main()
         exit(EXIT_FAILURE);
     }
 
-    guest_monitor_add_vm(test_vm_id);
     rpc_server_start();
 
     return 0;

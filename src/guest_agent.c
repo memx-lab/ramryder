@@ -109,8 +109,3 @@ char *guest_agent_get_meminfo(int vm_id)
 
     return response;
 }
-
-int guest_agent_get_num_vm(void)
-{
-    return g_agent_manager.count;
-}

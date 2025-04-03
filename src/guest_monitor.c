@@ -187,14 +187,10 @@ static void _monitor_bw_usage()
 
 static void *_monitor_loop(void *arg __attribute__((unused)))
 {
-    int num_active_vm = 0;
-
     while (running) {
-        num_active_vm = guest_agent_get_num_vm();
         /* Monitor memory capacity usage of each VM */
-        // TODO: get active VMs via bitmap
-        for (int i = 0; i < num_active_vm; i++) {
-            _monitor_memory_usage(i);
+        for (int i = 0; i < g_guest_monitor.count; i++) {
+            _monitor_memory_usage(g_guest_monitor.vm_ids[i]);
         }
 
         /* Monitor memory bandwidth usage */
