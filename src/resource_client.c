@@ -6,9 +6,9 @@
 #include <sys/types.h>
 #include <sys/un.h>
 #include <json-c/json.h>
+#include "util_socket.h"
 
 #define SERVER_SOCKET "/var/run/resource_manager.sock"
-#define BUFFER_SIZE 1024
 
 static void print_results(char* results)
 {
@@ -54,16 +54,50 @@ static void send_command(const char *command)
     close(sockfd);
 }
 
-int main()
+static void print_usage(void)
 {
-    char command[256];
+    fprintf(stderr, "Usage:\n");
+    fprintf(stderr, "   get-mem-info <vm_id>\n");
+    fprintf(stderr, "   add-mem size=<mb>\n");
+    fprintf(stderr, "   get-mem-bw\n");
+}
 
-    printf("Enter command (query/hotplug/memory): ");
-    if (scanf("%255s", command) <= 0) {
-        fprintf(stderr, "Invalid input or input failure (EOF or empty input).\n");
+int main(int argc, char *argv[])
+{
+    const char *cmd_action;
+    char cmd_full[BUFFER_SIZE] = {0};
+
+    if (argc < 2) {
+        print_usage();
         return -1;
     }
 
-    send_command(command);
+    cmd_action = argv[1];
+
+    if (strcmp(cmd_action, "get-mem-info") == 0) {
+        if (argc != 3 || atoi(argv[2]) < 0) {
+            fprintf(stderr, "Invalid usage: get-meminfo <vm_id>\n");
+            return -1;
+        }
+        snprintf(cmd_full, sizeof(cmd_full), "get-mem-info %d", atoi(argv[2]));
+    } else if (strcmp(cmd_action, "add-mem") == 0) {
+        if (argc != 3 || strncmp(argv[2], "size=", 5) != 0 || atoi(argv[2] + 5) <= 0) {
+            fprintf(stderr, "Invalid usage: add-mem size=<mb>\n");
+            return -1;
+        }
+        // TODO: implementation
+        snprintf(cmd_full, sizeof(cmd_full), "add-mem %s", argv[2]);
+    } else if (strcmp(cmd_action, "get-mem-bw") == 0) {
+        if (argc != 2) {
+            fprintf(stderr, "Invalid usage: get-mem-bw (no arguments required)\n");
+            return -1;
+        }
+        snprintf(cmd_full, sizeof(cmd_full), "get-mem-bw");
+    } else {
+        fprintf(stderr, "Unknown command: %s\n", cmd_action);
+        return -1;
+    }
+
+    send_command(cmd_full);
     return 0;
 }

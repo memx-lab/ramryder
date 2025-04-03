@@ -38,6 +38,8 @@ static void rpc_server_start(void)
     int num_events = 0;
     char *response = NULL;
     char buffer[BUFFER_SIZE] = {0};
+    char cmd[64];
+    char args[BUFFER_SIZE];
     struct sockaddr_un server_addr;
     struct epoll_event event, events[MAX_EVENTS];
 
@@ -89,20 +91,36 @@ static void rpc_server_start(void)
                     continue;
                 }
 
+                memset(buffer, 0, BUFFER_SIZE);
                 recv(client_fd, buffer, BUFFER_SIZE, 0);
                 printf("Received command: %s\n", buffer);
+                if (sscanf(buffer, "%63s %[^\n]", cmd, args) < 1) {
+                    response = strdup("Invalid command");
+                    goto end;
+                }
 
-                if (strcmp(buffer, "query") == 0) {
-                    response = guest_agent_get_meminfo(test_vm_id);
-                } else if (strcmp(buffer, "hotplug") == 0) {
-                    response = hotplug_dimm();
-                } else if (strcmp(buffer, "memory") == 0) {
+                if (strcmp(cmd, "get-mem-info") == 0) {
+                    int vm_id;
+                    if (sscanf(args, "%d", &vm_id) == 1) {
+                        response = guest_agent_get_meminfo(vm_id);
+                    } else {
+                        response = strdup("Invalid args");
+                    }
+                } else if (strcmp(cmd, "add-mem") == 0) {
+                    // TODO: implementation
+                    //response = hotplug_dimm();
+                    response = strdup("OK");
+                } else if (strcmp(cmd, "get-mem-bw") == 0) {
                     response = malloc(BUFFER_SIZE);
                     memory_pool_get_usage(response, BUFFER_SIZE);
                 } else {
-                    response = strdup("Unknown command");
+                    response = strdup("Invalid command");
                 }
 
+                if (response == NULL) {
+                    response = strdup("Failed to get results\n");
+                }
+end:
                 send(client_fd, response, strlen(response), 0);
                 free(response);
                 close(client_fd);
