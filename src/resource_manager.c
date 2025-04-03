@@ -20,7 +20,9 @@
 static int g_server_fd = -1;
 static int g_epoll_fd = -1;
 
-static void stop_rpc_server(void)
+static int test_vm_id = 0;
+
+static void rpc_server_stop(void)
 {
     if (g_server_fd != -1) {
         close(g_server_fd);
@@ -31,7 +33,7 @@ static void stop_rpc_server(void)
     }
 }
 
-static void start_rpc_server(void)
+static void rpc_server_start(void)
 {
     int num_events = 0;
     char *response = NULL;
@@ -91,7 +93,7 @@ static void start_rpc_server(void)
                 printf("Received command: %s\n", buffer);
 
                 if (strcmp(buffer, "query") == 0) {
-                    response = query_vm_status();
+                    response = guest_agent_get_meminfo(test_vm_id);
                 } else if (strcmp(buffer, "hotplug") == 0) {
                     response = hotplug_dimm();
                 } else if (strcmp(buffer, "memory") == 0) {
@@ -113,9 +115,8 @@ static void handle_signal(int signum __attribute__((unused)))
 {
     printf("\nResource Manager shutting down...\n");
 
-    stop_rpc_server();
-    guest_agent_cleanup();
-    stop_guest_monitor();
+    rpc_server_stop();
+    guest_monitor_server_stop();
     exit(0);
 }
 
@@ -126,17 +127,13 @@ int main()
     if (memory_pool_init(CONFIG_FILE) != 0) {
         exit(EXIT_FAILURE);
     }
-#if 0
-    /* Only init guest agent as it uses long-lived connection */
-    if (guest_agent_init() != 0) {
+
+    if (guest_monitor_server_start(CONFIG_FILE) != 0) {
         exit(EXIT_FAILURE);
     }
 
-    if (start_guest_monitor(CONFIG_FILE) != 0) {
-        exit(EXIT_FAILURE);
-    }
-#endif
-    start_rpc_server();
+    guest_monitor_add_vm(test_vm_id);
+    rpc_server_start();
 
     return 0;
 }

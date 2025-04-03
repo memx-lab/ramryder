@@ -12,6 +12,13 @@
 #include "uncore_agent.h"
 #include "util_common.h"
 
+struct guest_monitor {
+    int vm_ids[MAX_NUM_VM];
+    int count;
+};
+
+static struct guest_monitor g_guest_monitor;
+
 // for monitor
 static volatile int running = 1;
 static pthread_t monitor_thread;
@@ -100,7 +107,7 @@ static void cloud_db_client_cleanup(void)
     }
 }
 
-static void cloud_db_client_send(const char *data)
+static void _cloud_db_client_send(const char *data)
 {
     CURLcode res;
 
@@ -141,45 +148,112 @@ static void upload_to_cloud_db(const char *json_str)
         snprintf(influx_data, sizeof(influx_data),
                  "guest_memory,vm_id=1,node=%d memory_free=%d,memory_total=%d,memory_available=%d",
                  index, mem_free, mem_total, mem_available);
-        cloud_db_client_send(influx_data);
+        _cloud_db_client_send(influx_data);
     }
 
     json_object_put(parsed_json);
 }
 
-static void *monitor_loop(void *arg __attribute__((unused)))
+static void _monitor_memory_usage(int vm_id)
 {
     char *status_json_response;
+
+    status_json_response = guest_agent_get_meminfo(vm_id);
+    if (likely(status_json_response)) {
+        if (enable_cloud_db) {
+            upload_to_cloud_db(status_json_response);
+        }
+#ifdef ENABLE_DEBUG
+        printf("%s\n", status_json_response);
+#endif
+        free(status_json_response);
+    } else {
+        printf("Failed to get guest memory info.\n");
+    }
+
+}
+
+static void _monitor_bw_usage()
+{
     memdata_t md;
+    bool output = false;
+
+    uncore_agent_get_bandwidth(&md, output);
+#ifdef ENABLE_DEBUG
+    printf("  Total Read : %.2f MB/s\n", md.iMC_Rd_socket[0]);
+    printf("  Total Write: %.2f MB/s\n", md.iMC_Wr_socket[0]);
+#endif
+}
+
+static void *_monitor_loop(void *arg __attribute__((unused)))
+{
+    int num_active_vm = 0;
 
     while (running) {
-        /* Monitor VM memory capacity usage */
-        //TODO: per VM
-        status_json_response = query_vm_status();
-        if (likely(status_json_response)) {
-            if (enable_cloud_db) {
-                upload_to_cloud_db(status_json_response);
-            }
-#ifdef ENABLE_DEBUG
-            printf("%s\n", status_json_response);
-#endif
-            free(status_json_response);
-        } else {
-            printf("Failed to get guest memory info.\n");
+        num_active_vm = guest_agent_get_num_vm();
+        /* Monitor memory capacity usage of each VM */
+        // TODO: get active VMs via bitmap
+        for (int i = 0; i < num_active_vm; i++) {
+            _monitor_memory_usage(i);
         }
 
         /* Monitor memory bandwidth usage */
-        uncore_agent_get_bandwidth(&md, false);
-#ifdef ENABLE_DEBUG
-        printf("  Total Read : %.2f MB/s\n", md.iMC_Rd_socket[0]);
-        printf("  Total Write: %.2f MB/s\n", md.iMC_Wr_socket[0]);
-#endif
+        // TODO: for each VM
+        _monitor_bw_usage();
+
         usleep(10 * SECOND_IN_US);
     }
+
     return NULL;
 }
 
-void stop_guest_monitor(void)
+int guest_monitor_remove_vm(int vm_id)
+{
+    bool found = false;
+
+    for (int i = 0; i < g_guest_monitor.count; i++) {
+        if (g_guest_monitor.vm_ids[i] == vm_id) {
+            found = true;
+        }
+    }
+
+    if (!found) {
+        fprintf(stderr, "Cannot find VM %d\n", vm_id);
+        return -1;
+    }
+
+    guest_agent_cleanup(vm_id);
+    return 0; 
+}
+
+int guest_monitor_add_vm(int vm_id)
+{
+    int ret;
+
+    if (g_guest_monitor.count >= MAX_NUM_VM) {
+        fprintf(stderr, "Cannot create more agents (maximum is %d)\n", MAX_NUM_VM);
+        return -1;
+    }
+
+    for (int i = 0; i < g_guest_monitor.count; i++) {
+        if (g_guest_monitor.vm_ids[i] == vm_id) {
+            fprintf(stderr, "VM %d already exits\n", vm_id);
+            return -1;
+        }
+    }
+
+    ret = guest_agent_init(vm_id);
+    if (ret < 0) {
+        fprintf(stderr, "Failed to init guest agent for vm %d\n", vm_id);
+        return -1;
+    }
+    g_guest_monitor.vm_ids[g_guest_monitor.count] = vm_id;
+    g_guest_monitor.count++;
+
+    return 0;
+}
+
+void guest_monitor_server_stop(void)
 {
     running = 0;
     pthread_join(monitor_thread, NULL);
@@ -188,29 +262,34 @@ void stop_guest_monitor(void)
     if (enable_cloud_db) {
         cloud_db_client_cleanup();
     }
+
+    /* Remove all VMs if there are still active VMs in case users did not remove them */
+    for (int i = 0; i < g_guest_monitor.count; i++) {
+        guest_monitor_remove_vm(g_guest_monitor.vm_ids[i]);
+    }
 }
 
-int start_guest_monitor(const char* config_file)
+int guest_monitor_server_start(const char* config_file)
 {
     if (guest_monitor_load_config(config_file) != 0) {
-        perror("Failed to load monitor configuration\n");
+        fprintf(stderr, "Failed to load monitor configuration\n");
         return -1;
     }
 
     if (enable_cloud_db) {
         if (cloud_db_client_init() != 0) {
-            perror("Failed to init cloud db client\n");
+            fprintf(stderr, "Failed to init cloud db client\n");
             return -1;
         }
     }
 
     if (uncore_agent_init() != 0) {
-        perror("Failed to init uncore agent\n");
+        fprintf(stderr, "Failed to init uncore agent\n");
         return -1;
     }
 
-    if (pthread_create(&monitor_thread, NULL, monitor_loop, NULL) != 0) {
-        perror("Failed to create memory query thread");
+    if (pthread_create(&monitor_thread, NULL, _monitor_loop, NULL) != 0) {
+        fprintf(stderr, "Failed to create memory query thread");
         return -1;
     }
 

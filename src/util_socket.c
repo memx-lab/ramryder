@@ -30,3 +30,8 @@ int connect_to_socket(const char *socket_path)
     }
     return sockfd;
 }
+
+int close_sockect(int socket_fd)
+{
+    return close(socket_fd);
+}

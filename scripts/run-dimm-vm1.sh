@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # unique ID for each VM
-VMID=1
+VMID=0
 
 SOCK_PATH=/var/run
 NAME=VM-NUMA-$VMID
