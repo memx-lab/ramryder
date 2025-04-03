@@ -7,7 +7,7 @@
 #include <sys/un.h>
 #include <sys/epoll.h>
 #include <signal.h>
-#include "memory_resource.h"
+#include "memory_pool.h"
 #include "util_socket.h"
 #include "qemu_agent.h"
 #include "guest_agent.h"
@@ -96,7 +96,7 @@ static void start_rpc_server(void)
                     response = hotplug_dimm();
                 } else if (strcmp(buffer, "memory") == 0) {
                     response = malloc(BUFFER_SIZE);
-                    memory_get_resource(response, BUFFER_SIZE);
+                    memory_pool_get_usage(response, BUFFER_SIZE);
                 } else {
                     response = strdup("Unknown command");
                 }
@@ -123,7 +123,7 @@ int main()
 {
     signal(SIGINT, handle_signal);
 
-    if (memory_manager_init(CONFIG_FILE) != 0) {
+    if (memory_pool_init(CONFIG_FILE) != 0) {
         exit(EXIT_FAILURE);
     }
 #if 0

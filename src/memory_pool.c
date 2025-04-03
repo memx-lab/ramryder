@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <assert.h>
 #include "util_common.h"
-#include "memory_resource.h"
+#include "memory_pool.h"
 
 #define MAX_DEVICES 10
 #define MAX_SEGMENTS 4096
@@ -84,7 +84,7 @@ static int _allocate_segments(struct memory_dax_dev *mem_dev, int num_segments, 
     return start_index;
 }
 
-int memory_allocate_segments(int tier_id, int dev_id, int vm_id,
+int memory_pool_allocate_segments(int tier_id, int dev_id, int vm_id,
                     int size_mb, struct memory_request *mem_req)
 {
     struct memory_dax_dev *mem_dev = NULL;
@@ -148,7 +148,7 @@ static int _release_segments(struct memory_dax_dev *mem_dev, int vm_id,
     return 0;
 }
 
-int memory_release_segments(int tier_id, int dev_id, int vm_id, 
+int memory_pool_release_segments(int tier_id, int dev_id, int vm_id, 
                     int offset_mb, int size_mb)
 {
     int ret;
@@ -190,7 +190,7 @@ int memory_release_segments(int tier_id, int dev_id, int vm_id,
     return 0;
 }
 
-static int memory_load_config(const char* config_file)
+static int memory_pool_load_config(const char* config_file)
 {
     char line[512];
     FILE *file;
@@ -250,11 +250,11 @@ static int memory_load_config(const char* config_file)
     return 0;
 }
 
-static int init_memory_resource(const char* config_file)
+static int _init_memory_resource(const char* config_file)
 {
     int ret;
 
-    ret = memory_load_config(config_file);
+    ret = memory_pool_load_config(config_file);
     if (ret != 0) {
         perror("Failed to load memory configuration\n");
         return -1;
@@ -268,7 +268,7 @@ static int init_memory_resource(const char* config_file)
     return 0;
 }
 
-void memory_get_resource(char *buffer, int buffer_size)
+void memory_pool_get_usage(char *buffer, int buffer_size)
 {
     if (g_dev_count == 0) {
         snprintf(buffer, buffer_size, "No memory devices initialized.\n");
@@ -289,7 +289,7 @@ void memory_get_resource(char *buffer, int buffer_size)
     }
 }
 
-int memory_manager_init(const char* config_file)
+int memory_pool_init(const char* config_file)
 {
     int ret;
 #ifdef ENABLE_DEBUG
@@ -297,36 +297,36 @@ int memory_manager_init(const char* config_file)
     struct memory_request mem_req;
 #endif
 
-    ret = init_memory_resource(config_file);
+    ret = _init_memory_resource(config_file);
     if (ret != 0) {
         perror("Failed to init memory resource\n");
         return -1;
     }
 
 #ifdef ENABLE_DEBUG
-    memory_get_resource(buffer, DEV_INFO_SIZE);
+    memory_pool_get_usage(buffer, DEV_INFO_SIZE);
     printf("%s", buffer);
 
     // TODO: move to unit tests
-    ret = memory_allocate_segments(0, 1, 0, 128, &mem_req);
+    ret = memory_pool_allocate_segments(0, 1, 0, 128, &mem_req);
     assert(ret == 0);
     assert(mem_req.offset_mb == 0);
     assert(mem_req.size_mb == 128);
 
-    ret = memory_allocate_segments(0, 1, 0, 256, &mem_req);
+    ret = memory_pool_allocate_segments(0, 1, 0, 256, &mem_req);
     assert(ret == 0);
     assert(mem_req.offset_mb == 128);
     assert(mem_req.size_mb == 256);
 
-    ret = memory_release_segments(0, 1, 0, 128, 128);
+    ret = memory_pool_release_segments(0, 1, 0, 128, 128);
     assert(ret == 0);
 
-    ret = memory_allocate_segments(0, 1, 0, 256, &mem_req);
+    ret = memory_pool_allocate_segments(0, 1, 0, 256, &mem_req);
     assert(ret == 0);
     assert(mem_req.offset_mb == 384);
     assert(mem_req.size_mb == 256);
 
-    ret = memory_allocate_segments(0, 1, 0, 128, &mem_req);
+    ret = memory_pool_allocate_segments(0, 1, 0, 128, &mem_req);
     assert(ret == 0);
     assert(mem_req.offset_mb == 128);
     assert(mem_req.size_mb == 128);

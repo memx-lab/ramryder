@@ -10,7 +10,7 @@ endif
 
 LDFLAGS = -L$(PROJECT_ROOT)/lib -lpcm_public -ljson-c -lpthread -lcurl -lm -lstdc++
 TARGETS = resource_manager resource_client
-SRC_MANAGER = resource_manager.c memory_resource.c guest_agent.c guest_monitor.c qemu_agent.c util_socket.c uncore_agent.c
+SRC_MANAGER = resource_manager.c memory_pool.c guest_agent.c guest_monitor.c qemu_agent.c util_socket.c uncore_agent.c
 SRC_CLIENT = resource_client.c
 
 OBJ_MANAGER = $(SRC_MANAGER:.c=.o)
