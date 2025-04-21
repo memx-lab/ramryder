@@ -116,7 +116,7 @@ int memory_pool_allocate_segments(int tier_id, int dev_id, int vm_id,
         return -1;
     }
 
-    strncpy(mem_req->dev_path, mem_dev->dev_path, DEV_PATH_LEN);
+    snprintf(mem_req->dev_path, DEV_PATH_LEN, "%s", mem_dev->dev_path);
     mem_req->offset_mb = start_index * g_segment_size_mb;
     mem_req->size_mb = num_segments * g_segment_size_mb;
 

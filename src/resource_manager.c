@@ -12,6 +12,7 @@
 #include "qemu_agent.h"
 #include "guest_agent.h"
 #include "guest_monitor.h"
+#include "vm_manager.h"
 
 #define CONFIG_FILE "elasticmm.conf"
 #define SERVER_SOCKET "/var/run/resource_manager.sock"
@@ -133,6 +134,7 @@ static void handle_signal(int signum __attribute__((unused)))
 
     rpc_server_stop();
     guest_monitor_server_stop();
+    vm_mngr_instance_destroy(0);
     exit(0);
 }
 
@@ -147,6 +149,8 @@ int main()
     if (guest_monitor_server_start(CONFIG_FILE) != 0) {
         exit(EXIT_FAILURE);
     }
+
+    vm_mngr_instance_create(0, 0, "10-12,20-22");
 
     rpc_server_start();
 

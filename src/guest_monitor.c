@@ -9,7 +9,7 @@
 #include <json-c/json.h>
 #include "guest_agent.h"
 #include "guest_monitor.h"
-#include "uncore_agent.h"
+#include "perf_counter.h"
 #include "util_common.h"
 
 struct guest_monitor {
@@ -61,8 +61,9 @@ static int guest_monitor_load_config(const char* config_file)
         }
     }
 #ifdef ENABLE_DEBUG
-    printf("url: %s, size: %lu, token: %s, size: %lu\n",
-        influxdb_url, strlen(influxdb_url), influxdb_token, strlen(influxdb_token));
+    printf("Cloud DB %s, url: %s, size: %lu, token: %s, size: %lu\n",
+            enable_cloud_db? "enabled" : "disabled",
+            influxdb_url, strlen(influxdb_url), influxdb_token, strlen(influxdb_token));
 #endif
     fclose(file);
     return 0;
@@ -178,7 +179,7 @@ static void _monitor_bw_usage()
     memdata_t md;
     bool output = false;
 
-    uncore_agent_get_bandwidth(&md, output);
+    perf_uncore_agent_get_bandwidth(&md, output);
 #ifdef ENABLE_DEBUG
     printf("  Total Read : %.2f MB/s\n", md.iMC_Rd_socket[0]);
     printf("  Total Write: %.2f MB/s\n", md.iMC_Wr_socket[0]);
@@ -254,7 +255,7 @@ void guest_monitor_server_stop(void)
     running = 0;
     pthread_join(monitor_thread, NULL);
 
-    uncore_agent_cleanup();
+    perf_uncore_agent_cleanup();
     if (enable_cloud_db) {
         cloud_db_client_cleanup();
     }
@@ -279,7 +280,7 @@ int guest_monitor_server_start(const char* config_file)
         }
     }
 
-    if (uncore_agent_init() != 0) {
+    if (perf_uncore_agent_init() != 0) {
         fprintf(stderr, "Failed to init uncore agent\n");
         return -1;
     }
