@@ -150,7 +150,7 @@ int main()
         exit(EXIT_FAILURE);
     }
 
-    vm_mngr_instance_create(0, 0, "10-12,20-22");
+    vm_mngr_instance_create(0, "10-12,20-22");
 
     rpc_server_start();
 

@@ -13,7 +13,6 @@
 struct vm_instance {
     // basic
     int vm_id;
-    int pid;
     int num_cores;
     char core_set[256];
     int core_index; // used by perf counter setup
@@ -141,7 +140,7 @@ static void __vm_num_core_update(int core_id __attribute__((unused)), void *arg)
     VM->num_cores++;
 }
 
-int vm_mngr_instance_create(int vm_id, int pid, char *core_set)
+int vm_mngr_instance_create(int vm_id, char *core_set)
 {
     struct vm_instance *VM;
 
@@ -159,7 +158,6 @@ int vm_mngr_instance_create(int vm_id, int pid, char *core_set)
 
     BUG_ON(VM->initialized);
     VM->vm_id = vm_id;
-    VM->pid = pid;
     for_each_core(core_set, __vm_num_core_update, VM); // parse number of cores
     snprintf(VM->core_set, sizeof(VM->core_set), "%s", core_set);
     vm_perf_counter_setup(VM);
@@ -180,7 +178,6 @@ void vm_mngr_instance_destroy(int vm_id)
         VM = &g_vm_mngr.VMs[i];
         if (VM->vm_id == vm_id && VM->initialized) {
             VM->vm_id = -1;
-            VM->pid = -1;
             VM->num_cores = 0;
             memset(VM->core_set, 0, sizeof(VM->core_set));
             vm_perf_counter_teardown(VM);
