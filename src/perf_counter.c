@@ -8,7 +8,9 @@
 #include <sys/ioctl.h>
 #include <sys/syscall.h>
 #include <sys/stat.h>
-#include <linux/perf_event.h>
+#include <linux/perf_event.h>    /* Definition of PERF_* constants */
+#include <linux/hw_breakpoint.h> /* Definition of HW_* constants */
+#include <sys/syscall.h>         /* Definition of SYS_* constants */
 #include "util_common.h"
 #include "perf_counter.h"
 
@@ -27,12 +29,15 @@ uint64_t perf_event_config_arr[] = {
 	0x00000300UL,	// CPU_CLK_UNHALTED.REF_TSC
 	0x01001012UL,	// DTLB_LOAD_MISSES.WALK_ACTIVE
 	0x00000E12UL,	// DTLB_LOAD_MISSES.WALK_COMPLETED
+
 	0x00001020UL,	// OFFCORE_REQUESTS_OUTSTANDING.L3_MISS_DEMAND_DATA_RD
 	0x00001021UL,	// OFFCORE_REQUESTS.L3_MISS_DEMAND_DATA_RD
 	0x00000120UL,	// OFFCORE_REQUESTS_OUTSTANDING.DEMAND_DATA_RD
+
 	0x00000121UL,	// OFFCORE_REQUESTS.DEMAND_DATA_RD
 	0x000010D1UL,	// MEM_LOAD_RETIRED.L2_MISS
 	0x00001F25UL,	// L2_LINES_IN.ALL
+	
 	0x0000012AUL,	// OCR.MODIFIED_WRITE.ANY_RESPONSE
 	0x0000012BUL,	// OCR.RFO_TO_CORE.L3_HIT_M
 	0x0000012AUL,	// OCR.READS_TO_CORE.L3_MISS_LOCAL_SOCKET

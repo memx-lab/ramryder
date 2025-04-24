@@ -12,6 +12,7 @@
 #include <json-c/json.h>
 #include "guest_agent.h"
 #include "util_socket.h"
+#include "vm_manager.h"
 
 #define QGA_SOCKET_PREFIX "/var/run/qga-sock-"
 #define MAX_SOCKET_PATH 256

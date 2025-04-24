@@ -27,5 +27,6 @@
 
 // counter related
 #define SECOND_IN_US 1000000
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
 
 #endif // UTIL_COMMON_H

@@ -11,13 +11,7 @@
 #include "guest_monitor.h"
 #include "perf_counter.h"
 #include "util_common.h"
-
-struct guest_monitor {
-    int vm_ids[MAX_NUM_VM];
-    int count;
-};
-
-static struct guest_monitor g_guest_monitor;
+#include "vm_manager.h"
 
 // for monitor
 static volatile int running = 1;
@@ -155,8 +149,21 @@ static void upload_to_cloud_db(const char *json_str)
     json_object_put(parsed_json);
 }
 
-static void _monitor_memory_usage(int vm_id)
+static void get_arch_bw_usage(void)
 {
+    memdata_t md;
+    bool output = false;
+
+    perf_uncore_agent_get_bandwidth(&md, output);
+#ifdef ENABLE_DEBUG
+    printf("  Total Read : %.2f MB/s\n", md.iMC_Rd_socket[1]);
+    printf("  Total Write: %.2f MB/s\n", md.iMC_Wr_socket[1]);
+#endif
+}
+
+static void __get_memory_usage(struct vm_instance *VM, void *arg __attribute__((unused)))
+{
+    int vm_id = VM->vm_id;
     char *status_json_response;
 
     status_json_response = guest_agent_get_meminfo(vm_id);
@@ -169,85 +176,36 @@ static void _monitor_memory_usage(int vm_id)
 #endif
         free(status_json_response);
     } else {
-        printf("Failed to get guest memory info.\n");
+        fprintf(stderr, "Failed to get guest memory info, VM %d\n", vm_id);
     }
-
-}
-
-static void _monitor_bw_usage()
-{
-    memdata_t md;
-    bool output = false;
-
-    perf_uncore_agent_get_bandwidth(&md, output);
 #ifdef ENABLE_DEBUG
-    printf("  Total Read : %.2f MB/s\n", md.iMC_Rd_socket[0]);
-    printf("  Total Write: %.2f MB/s\n", md.iMC_Wr_socket[0]);
+    for (int j = 0; j < PERF_EVENT_TYPE_MAX; ++j) {
+        printf("%lu\n", VM->cum_perf_event_counts[j]);
+    }
+    printf("----------------------------\n");
+    //printf("VM %d BW (MB/s), Read: %f, Write: %f\n",
+    //    vm_id, VM->cur_metrics[METRIC_TYPE_CORE_READ], VM->cur_metrics[METRIC_TYPE_CORE_WRITE]);
 #endif
 }
 
-static void *_monitor_loop(void *arg __attribute__((unused)))
+static void *__monitor_loop(void *arg __attribute__((unused)))
 {
+    int operation_window_s = 10 * SECOND_IN_US;
     while (running) {
         /* Monitor memory capacity usage of each VM */
-        for (int i = 0; i < g_guest_monitor.count; i++) {
-            _monitor_memory_usage(g_guest_monitor.vm_ids[i]);
-        }
+        vm_mngr_for_each_vm(__get_memory_usage, NULL);
 
-        /* Monitor memory bandwidth usage */
-        // TODO: for each VM
-        _monitor_bw_usage();
+        /* Monitor perf counters for each VM */
+        vm_mngr_update_perf_counters();
+        vm_mngr_update_metrics(operation_window_s);
 
-        usleep(10 * SECOND_IN_US);
+        /* Monitor memory bandwidth usage in arch level (controller/channel)*/
+        //get_arch_bw_usage();
+
+        usleep(operation_window_s);
     }
 
     return NULL;
-}
-
-int guest_monitor_remove_vm(int vm_id)
-{
-    bool found = false;
-
-    for (int i = 0; i < g_guest_monitor.count; i++) {
-        if (g_guest_monitor.vm_ids[i] == vm_id) {
-            found = true;
-        }
-    }
-
-    if (!found) {
-        fprintf(stderr, "Cannot find VM %d\n", vm_id);
-        return -1;
-    }
-
-    guest_agent_cleanup(vm_id);
-    return 0; 
-}
-
-int guest_monitor_add_vm(int vm_id)
-{
-    int ret;
-
-    if (g_guest_monitor.count >= MAX_NUM_VM) {
-        fprintf(stderr, "Cannot create more agents (maximum is %d)\n", MAX_NUM_VM);
-        return -1;
-    }
-
-    for (int i = 0; i < g_guest_monitor.count; i++) {
-        if (g_guest_monitor.vm_ids[i] == vm_id) {
-            fprintf(stderr, "VM %d already exits\n", vm_id);
-            return -1;
-        }
-    }
-
-    ret = guest_agent_init(vm_id);
-    if (ret < 0) {
-        fprintf(stderr, "Failed to init guest agent for vm %d\n", vm_id);
-        return -1;
-    }
-    g_guest_monitor.vm_ids[g_guest_monitor.count] = vm_id;
-    g_guest_monitor.count++;
-
-    return 0;
 }
 
 void guest_monitor_server_stop(void)
@@ -258,11 +216,6 @@ void guest_monitor_server_stop(void)
     perf_uncore_agent_cleanup();
     if (enable_cloud_db) {
         cloud_db_client_cleanup();
-    }
-
-    /* Remove all VMs if there are still active VMs in case users did not remove them */
-    for (int i = 0; i < g_guest_monitor.count; i++) {
-        guest_monitor_remove_vm(g_guest_monitor.vm_ids[i]);
     }
 }
 
@@ -285,7 +238,7 @@ int guest_monitor_server_start(const char* config_file)
         return -1;
     }
 
-    if (pthread_create(&monitor_thread, NULL, _monitor_loop, NULL) != 0) {
+    if (pthread_create(&monitor_thread, NULL, __monitor_loop, NULL) != 0) {
         fprintf(stderr, "Failed to create memory query thread");
         return -1;
     }
