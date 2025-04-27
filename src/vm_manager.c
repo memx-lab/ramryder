@@ -32,9 +32,10 @@ void vm_mngr_for_each_vm(vm_handler_fn vm_handler, void *arg)
     }
 }
 
-static void for_each_core(const char *core_set, core_handler_fn core_handler, void *arg)
+void  vm_mngr_for_each_core(struct vm_instance *VM, core_handler_fn core_handler, void *arg)
 {
-    char *copy = strdup(core_set);
+    BUG_ON(VM->core_set[0] == '\0');
+    char *copy = strdup(VM->core_set);
     char *token = strtok(copy, ",");
 
     // format: aa-bb, xx-yy
@@ -45,12 +46,12 @@ static void for_each_core(const char *core_set, core_handler_fn core_handler, vo
             // core range（e.g., "20-39"）
             if (start <= end) {
                 for (int i = start; i <= end; ++i) {
-                    core_handler(i, arg);
+                    core_handler(VM, i, arg);
                 }
             }
         } else if (sscanf(token, "%d", &start) == 1) {
             // single core（e.g., "41"）
-            core_handler(start, arg);
+            core_handler(VM, start, arg);
         }
 
         token = strtok(NULL, ",");
@@ -58,10 +59,11 @@ static void for_each_core(const char *core_set, core_handler_fn core_handler, vo
     free(copy);
 }
 
-static void __vm_perf_counter_setup_core(int core_id, void *arg)
+#if 0
+static void __vm_perf_counter_setup_core(struct vm_instance *VM, int core_id,
+                        void *arg __attribute__((unused)))
 {
     int leader_fd = -1;
-    struct vm_instance *VM = (struct vm_instance *)arg;
 
     BUG_ON(core_id < 0);
     for (int j = 0; j < PERF_EVENT_TYPE_MAX; j++) {
@@ -103,7 +105,7 @@ static void vm_perf_counter_setup(struct vm_instance *VM)
 
     // init perf counters for each core of the VM
     VM->core_index = 0;
-    for_each_core(VM->core_set, __vm_perf_counter_setup_core, VM);
+    vm_mngr_for_each_core(VM, __vm_perf_counter_setup_core, NULL);
 }
 
 static void vm_perf_counter_teardown(struct vm_instance *VM)
@@ -129,11 +131,12 @@ static void vm_perf_counter_teardown(struct vm_instance *VM)
     //memset(VM->cur_metrics, 0, sizeof(VM->cur_metrics));
     //memset(VM->ewma_metrics, 0, sizeof(VM->ewma_metrics));
 }
+#endif
 
-static void __vm_num_core_update(int core_id __attribute__((unused)), void *arg)
+static void __vm_num_core_update(struct vm_instance *VM,
+                        int core_id __attribute__((unused)),
+                        void *arg __attribute__((unused)))
 {
-    struct vm_instance *VM = (struct vm_instance *)arg;
-
     VM->num_cores++;
 }
 
@@ -185,13 +188,13 @@ int vm_mngr_instance_create(int vm_id, char *core_set)
     BUG_ON(VM->initialized);
     VM->vm_id = vm_id;
     VM->num_cores = 0;
-    for_each_core(core_set, __vm_num_core_update, VM); // parse and get number of cores
     snprintf(VM->core_set, sizeof(VM->core_set), "%s", core_set);
-    vm_perf_counter_setup(VM);
+    vm_mngr_for_each_core(VM, __vm_num_core_update, NULL);
+    //vm_perf_counter_setup(VM);
     ret = guest_agent_init(vm_id);
     if (ret < 0) {
         fprintf(stderr, "Failed to init guest agent for vm %d\n", vm_id);
-        vm_perf_counter_teardown(VM);
+        //vm_perf_counter_teardown(VM);
         vm_struct_reset(VM);
         return -1;
     }
@@ -224,13 +227,14 @@ void vm_mngr_instance_destroy(int vm_id)
     }
 
     guest_agent_cleanup(VM->vm_id);
-    vm_perf_counter_teardown(VM);
+    //vm_perf_counter_teardown(VM);
     vm_struct_reset(VM);
 
     g_vm_mngr.count--;
     printf("VM %d destroyed\n", vm_id);
 }
 
+#if 0
 void vm_mngr_update_perf_counters(void)
 {
     struct vm_instance *VM;
@@ -265,7 +269,6 @@ void vm_mngr_update_metrics(int operation_window_s)
         if (!VM->initialized) {
             continue;
         }
-#if 0
 		VM->cur_metrics[METRIC_TYPE_DTLB_LOAD_MISS_LAT] =
 			(double) VM->delta_perf_event_counts[PERF_EVENT_TYPE_DTLB_LOAD_MISSES_WALK_ACTIVE]
 			/ (double) VM->delta_perf_event_counts[PERF_EVENT_TYPE_DTLB_LOAD_MISSES_WALK_COMPLETED];
@@ -290,7 +293,6 @@ void vm_mngr_update_metrics(int operation_window_s)
 		VM->cur_metrics[METRIC_TYPE_L2_MPI] =
 			(double) VM->delta_perf_event_counts[PERF_EVENT_TYPE_L2_LINES_IN_ALL]
 			/ (double) VM->delta_perf_event_counts[PERF_EVENT_TYPE_INST_RETIRED];
-#endif
 		double a, b;
 		a = (double) VM->delta_perf_event_counts[PERF_EVENT_TYPE_OCR_READS_TO_CORE_L3_MISS_LOCAL_SOCKET];
 		b = (double) VM->delta_perf_event_counts[PERF_EVENT_TYPE_OCR_HWPF_L3_L3_MISS_LOCAL];
@@ -303,7 +305,7 @@ void vm_mngr_update_metrics(int operation_window_s)
 		double write_count = MAX(0.0, (a - b));
 		VM->cur_metrics[METRIC_TYPE_CORE_WRITE] = (a - b) * 64 / 1e6;
 		VM->cur_metrics[METRIC_TYPE_CORE_WRITE] /= operation_window_s;
-#if 0
+
 		VM->cur_metrics[METRIC_TYPE_2LM_MISS_RATIO] = L3_MISS_LAT_TO_2LM_MR_INTERCEPT
 			+ L3_MISS_LAT_TO_2LM_MR_SLOPE * VM->cur_metrics[METRIC_TYPE_LOAD_L3_MISS_LAT];
 		VM->cur_metrics[METRIC_TYPE_2LM_MISS_RATIO] = min(1.0, max(0.0, VM->cur_metrics[METRIC_TYPE_2LM_MISS_RATIO]));
@@ -332,6 +334,7 @@ void vm_mngr_update_metrics(int operation_window_s)
 			}
 		}
 		VM->ewma_initialized = true;
-#endif
+
 	}
 }
+#endif

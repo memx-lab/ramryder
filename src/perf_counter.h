@@ -67,9 +67,10 @@ int perf_event_setup(int core, uint64_t config, uint64_t config1, bool pin_event
 	bool exclude_host, bool exclude_guest, int group_fd);
 uint64_t perf_event_read(int event_fd);
 
-// system-wide uncore events provided by PCM
-int perf_uncore_agent_init(void);
-void perf_uncore_agent_cleanup(void);
-void perf_uncore_agent_get_bandwidth(memdata_t *md, bool output);
+// system-wide events provided by PCM
+int perf_agent_init(void);
+void perf_agent_cleanup(void);
+void perf_agent_get_metrics(memdata_t *md, core_metrics_t *core_metrics, bool output);
+uint32_t perf_agent_get_num_cores();
 
 #endif

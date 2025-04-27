@@ -26,7 +26,10 @@
 #endif
 
 // counter related
-#define SECOND_IN_US 1000000
+#define US_PER_SECOND 1000000
+#define SECOND_TO_US(x) ((x) * (US_PER_SECOND))
+#define US_TO_SECOND(x) ((x) / (US_PER_SECOND))
+
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 
 #endif // UTIL_COMMON_H

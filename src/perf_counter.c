@@ -240,8 +240,8 @@ uint64_t perf_event_read(int event_fd)
 	return (uint64_t) value;
 }
 
-
-int perf_uncore_agent_init(void)
+// system-wide events provided by PCM
+int perf_agent_init(void)
 {
     if (pcm_c_init() != 0) {
         perror("Filed to init  PCM\n");
@@ -254,12 +254,17 @@ int perf_uncore_agent_init(void)
     return 0;
 }
 
-void perf_uncore_agent_cleanup(void)
+void perf_agent_cleanup(void)
 {
     pcm_c_cleanup();
 }
 
-void perf_uncore_agent_get_bandwidth(memdata_t *md, bool output)
+void perf_agent_get_metrics(memdata_t *md, core_metrics_t *core_metrics, bool output)
 {
-    pcm_c_get_bandwidth(md, output);
+	pcm_c_get_metrics(md, core_metrics, output);
+}
+
+uint32_t perf_agent_get_num_cores()
+{
+	return pcm_c_get_num_cores();
 }

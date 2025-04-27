@@ -12,6 +12,7 @@
 #define MAX_CXL_PORTS 6
 
 // use same definiton as pcm
+typedef unsigned int uint32;
 typedef unsigned long long uint64;
 
 typedef enum {
@@ -21,7 +22,13 @@ typedef enum {
     PmemMixedMode
 } ServerUncoreMemoryMetrics;
 
-// this structure should be exactly same as that in pcm_memory.cpp
+// the following structures should be exactly same as that in pcm_memory.cpp
+#define MAX_CORES 4096
+typedef struct core_metrics {
+    uint64 core_local_bw[MAX_CORES];
+    uint64 core_remote_bw[MAX_CORES];
+} core_metrics_t;
+
 typedef struct memdata {
     float iMC_Rd_socket_chan[MAX_SOCKETS][MAX_CHANNELS];
     float iMC_Wr_socket_chan[MAX_SOCKETS][MAX_CHANNELS];
@@ -53,24 +60,13 @@ typedef struct memdata {
     ServerUncoreMemoryMetrics metrics;
 } memdata_t;
 
+// all must be called after pcm_c_init()
 int pcm_c_init();
-
 void pcm_c_start();
-
-/*
- * Print average bandwidth between the time of last call and current call.
- *
- * If this is the first time to call, the time of last call is the time when pcm starts.
- */
-void pcm_c_print_bandwidth();
-
-/*
- * Get average bandwidth between the time of last call and current call.
- *
- * If this is the first time to call, the time of last call is the time when pcm starts.
- */
-void pcm_c_get_bandwidth(memdata_t *md, bool output);
-
 void pcm_c_cleanup();
+
+void pcm_c_print_metrics();
+void pcm_c_get_metrics(memdata_t *md, core_metrics_t *core_metrics, bool output);
+uint32 pcm_c_get_num_cores();
 
 #endif

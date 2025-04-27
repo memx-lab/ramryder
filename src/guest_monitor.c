@@ -16,6 +16,7 @@
 // for monitor
 static volatile int running = 1;
 static pthread_t monitor_thread;
+static uint32_t monitor_interval_in_second = 3;
 
 // for cloud db
 static bool enable_cloud_db = false;
@@ -149,60 +150,92 @@ static void upload_to_cloud_db(const char *json_str)
     json_object_put(parsed_json);
 }
 
-static void get_arch_bw_usage(void)
+static void get_sys_mem_bw_usage(memdata_t *md, core_metrics_t *core_metrics)
 {
-    memdata_t md;
     bool output = false;
 
-    perf_uncore_agent_get_bandwidth(&md, output);
+    perf_agent_get_metrics(md, core_metrics, output);
 #ifdef ENABLE_DEBUG
-    printf("  Total Read : %.2f MB/s\n", md.iMC_Rd_socket[1]);
-    printf("  Total Write: %.2f MB/s\n", md.iMC_Wr_socket[1]);
+    int max_sockets = 2;
+    for (int skt_id = 0; skt_id < max_sockets; skt_id++) {
+        printf("Socket %d, Read : %.2f MB/s, Write: %.2f MB/s\n", 
+            skt_id, md->iMC_Rd_socket[skt_id], md->iMC_Wr_socket[skt_id]);
+    }
 #endif
 }
 
-static void __get_memory_usage(struct vm_instance *VM, void *arg __attribute__((unused)))
+static void __accumulate_bw_per_core(struct vm_instance *VM, int core_id, void *arg)
+{
+    core_metrics_t *core_metrics = (core_metrics_t *)arg;
+
+    VM->mem_bw_local += core_metrics->core_local_bw[core_id];
+    VM->mem_bw_remote += core_metrics->core_remote_bw[core_id];
+}
+
+static void __get_vm_mem_bw_usage(struct vm_instance *VM, void *arg)
+{
+    VM->mem_bw_local = 0;
+    VM->mem_bw_remote = 0;
+
+    vm_mngr_for_each_core(VM, __accumulate_bw_per_core, arg);
+
+    // We calculate real BW here by ourselves since current metrics from
+    // PCM are not real bandwidth.
+    VM->mem_bw_local = VM->mem_bw_local / monitor_interval_in_second;
+    VM->mem_bw_remote = VM->mem_bw_remote / monitor_interval_in_second;
+
+#ifdef ENABLE_DEBUG
+    printf("VM %i Bandwidth, Local %lu MB/s, Remote %lu MB/s\n",
+            VM->vm_id, VM->mem_bw_local, VM->mem_bw_remote);
+#endif
+}
+
+static void __get_vm_mem_cp_usage(struct vm_instance *VM, void *arg __attribute__((unused)))
 {
     int vm_id = VM->vm_id;
     char *status_json_response;
 
     status_json_response = guest_agent_get_meminfo(vm_id);
-    if (likely(status_json_response)) {
-        if (enable_cloud_db) {
-            upload_to_cloud_db(status_json_response);
-        }
-#ifdef ENABLE_DEBUG
-        printf("%s\n", status_json_response);
-#endif
-        free(status_json_response);
-    } else {
+    if (unlikely(!status_json_response)) {
         fprintf(stderr, "Failed to get guest memory info, VM %d\n", vm_id);
+        return;
     }
+
+    if (enable_cloud_db) {
+        upload_to_cloud_db(status_json_response);
+    }
+
+    // TODO: parse memory usage and fill VM
 #ifdef ENABLE_DEBUG
-    for (int j = 0; j < PERF_EVENT_TYPE_MAX; ++j) {
-        printf("%lu\n", VM->cum_perf_event_counts[j]);
-    }
-    printf("----------------------------\n");
-    //printf("VM %d BW (MB/s), Read: %f, Write: %f\n",
-    //    vm_id, VM->cur_metrics[METRIC_TYPE_CORE_READ], VM->cur_metrics[METRIC_TYPE_CORE_WRITE]);
+    printf("%s\n", status_json_response);
 #endif
+    free(status_json_response);
 }
 
 static void *__monitor_loop(void *arg __attribute__((unused)))
 {
-    int operation_window_s = 10 * SECOND_IN_US;
+    memdata_t md;
+    core_metrics_t core_metrics;
+    uint32_t monitor_interval_in_us = SECOND_TO_US(monitor_interval_in_second);
+
     while (running) {
+#ifdef ENABLE_DEBUG
+        printf("======================================================================\n");
+#endif
+        /* Get whole system bandwidth including per core and channel/controller (uncore) */
+        get_sys_mem_bw_usage(&md, &core_metrics);
+    
         /* Monitor memory capacity usage of each VM */
-        vm_mngr_for_each_vm(__get_memory_usage, NULL);
+        vm_mngr_for_each_vm(__get_vm_mem_cp_usage, NULL);
 
-        /* Monitor perf counters for each VM */
-        vm_mngr_update_perf_counters();
-        vm_mngr_update_metrics(operation_window_s);
+        /*Monitor memory bandwidth usage of each VM */
+        vm_mngr_for_each_vm(__get_vm_mem_bw_usage, &core_metrics);
 
-        /* Monitor memory bandwidth usage in arch level (controller/channel)*/
-        //get_arch_bw_usage();
+        /* TODO: Monitor memory latency of each VM */
+        //vm_mngr_update_perf_counters();
+        //vm_mngr_update_metrics(operation_window_s);
 
-        usleep(operation_window_s);
+        usleep(monitor_interval_in_us);
     }
 
     return NULL;
@@ -213,7 +246,7 @@ void guest_monitor_server_stop(void)
     running = 0;
     pthread_join(monitor_thread, NULL);
 
-    perf_uncore_agent_cleanup();
+    perf_agent_cleanup();
     if (enable_cloud_db) {
         cloud_db_client_cleanup();
     }
@@ -233,7 +266,7 @@ int guest_monitor_server_start(const char* config_file)
         }
     }
 
-    if (perf_uncore_agent_init() != 0) {
+    if (perf_agent_init() != 0) {
         fprintf(stderr, "Failed to init uncore agent\n");
         return -1;
     }
