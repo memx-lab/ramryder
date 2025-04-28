@@ -188,6 +188,7 @@ int vm_mngr_instance_create(int vm_id, char *core_set)
     BUG_ON(VM->initialized);
     VM->vm_id = vm_id;
     VM->num_cores = 0;
+    // TODO: check core overlap with other VMs
     snprintf(VM->core_set, sizeof(VM->core_set), "%s", core_set);
     vm_mngr_for_each_core(VM, __vm_num_core_update, NULL);
     //vm_perf_counter_setup(VM);
@@ -208,7 +209,7 @@ int vm_mngr_instance_create(int vm_id, char *core_set)
     return 0;
 }
 
-void vm_mngr_instance_destroy(int vm_id)
+int vm_mngr_instance_destroy(int vm_id)
 {
     bool found = false;
     struct vm_instance *VM;
@@ -223,7 +224,7 @@ void vm_mngr_instance_destroy(int vm_id)
 
     if (!found) {
         fprintf(stderr, "cannot find VM instance: %d\n", vm_id);
-        return;
+        return -1;
     }
 
     guest_agent_cleanup(VM->vm_id);
@@ -232,6 +233,8 @@ void vm_mngr_instance_destroy(int vm_id)
 
     g_vm_mngr.count--;
     printf("VM %d destroyed\n", vm_id);
+
+    return 0;
 }
 
 #if 0

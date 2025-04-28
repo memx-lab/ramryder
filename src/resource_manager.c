@@ -101,7 +101,7 @@ static void rpc_server_start(void)
 
                 if (strcmp(cmd, "get-mem-info") == 0) {
                     int vm_id;
-                    if (sscanf(args, "%d", &vm_id) == 1) {
+                    if (sscanf(args, "vid=%d", &vm_id) == 1) {
                         response = guest_agent_get_meminfo(vm_id);
                     } else {
                         response = strdup("Invalid args");
@@ -131,6 +131,48 @@ static void rpc_server_start(void)
                     // TODO: implementation
                     //response = hotplug_dimm();
                     response = strdup("OK");
+                } else if (strcmp(cmd, "create-vm") == 0) {
+                    int vid = -1;
+                    char coreset_str[BUFFER_SIZE] = {0};
+
+                    ret = sscanf(args, "vid=%d coreset=%[^\n]", &vid, coreset_str);
+                    if (ret != 2 || vid < 0) {
+                        response = strdup("Invalid args");
+                        goto end;
+                    }
+
+                    char *start = strchr(coreset_str, '[');
+                    char *end = strchr(coreset_str, ']');
+                    if (!start || !end || start >= end) {
+                        response = strdup("Invalid command");
+                        goto end;
+                    }
+
+                    start++;
+                    *end = '\0';
+                    response = malloc(BUFFER_SIZE);
+                    // create VM must be called after VM boots
+                    // since it will connet qemu guest agent
+                    ret = vm_mngr_instance_create(vid, start);
+                    if (ret == 0) {
+                        snprintf(response, BUFFER_SIZE, "Create VM %d success, coreset: %s", vid, start);
+                    } else {
+                        snprintf(response, BUFFER_SIZE, "Create VM %d failed, coreset: %s", vid, start);
+                    }
+                } else if (strcmp(cmd, "destroy-vm") == 0) {
+                    int vid;
+                    ret = sscanf(args, "vid=%d", &vid);
+                    if (ret != 1 || vid < 0) {
+                        response = strdup("Invalid args");
+                        goto end;
+                    }
+                    response = malloc(BUFFER_SIZE);
+                    ret = vm_mngr_instance_destroy(vid);
+                    if (ret == 0) {
+                        snprintf(response, BUFFER_SIZE, "Destroy VM %d success", vid);
+                    } else {
+                        snprintf(response, BUFFER_SIZE, "Destroy VM %d failed", vid);
+                    }
                 } else {
                     response = strdup("Invalid command");
                 }

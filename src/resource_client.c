@@ -57,10 +57,12 @@ static void send_command(const char *command)
 static void print_usage(void)
 {
     fprintf(stderr, "Usage:\n");
-    fprintf(stderr, "   get-mem-info <vm_id>\n");
+    fprintf(stderr, "   get-mem-info vid=<vm_id>\n");
     fprintf(stderr, "   get-mem-pool\n");
     fprintf(stderr, "   allocate-mem tid=<tid> did=<dev id> vid=<vm id> size=<mb>\n");
     fprintf(stderr, "   add-mem size=<mb>\n");
+    fprintf(stderr, "   create-vm vid=<vm id> coreset=[20-30,50-60]\n");
+    fprintf(stderr, "   destroy-vm vid=<vm id>\n");
 }
 
 int main(int argc, char *argv[])
@@ -76,12 +78,12 @@ int main(int argc, char *argv[])
     cmd_action = argv[1];
 
     if (strcmp(cmd_action, "get-mem-info") == 0) {
-        if (argc != 3 || atoi(argv[2]) < 0) {
+        if (argc != 3) {
             fprintf(stderr, "Invalid usage\n");
             print_usage();
             return -1;
         }
-        snprintf(cmd_full, sizeof(cmd_full), "%s %d", cmd_action, atoi(argv[2]));
+        snprintf(cmd_full, sizeof(cmd_full), "%s %s", cmd_action, argv[2]);
     } else if (strcmp(cmd_action, "get-mem-pool") == 0) {
         if (argc != 2) {
             fprintf(stderr, "Invalid usage\n");
@@ -90,7 +92,7 @@ int main(int argc, char *argv[])
         }
         snprintf(cmd_full, sizeof(cmd_full), "%s", cmd_action);
     } else if (strcmp(cmd_action, "allocate-mem") == 0) {
-        if (argc != 6) { // TODO: check individual args
+        if (argc != 6) {
             fprintf(stderr, "Invalid usage\n");
             print_usage();
             return -1;
@@ -103,6 +105,20 @@ int main(int argc, char *argv[])
             return -1;
         }
         // TODO: implementation
+        snprintf(cmd_full, sizeof(cmd_full), "%s %s", cmd_action, argv[2]);
+    } else if (strcmp(cmd_action, "create-vm") == 0) {
+        if (argc != 4) {
+            fprintf(stderr, "Invalid usage\n");
+            print_usage();
+            return -1;
+        }
+        snprintf(cmd_full, sizeof(cmd_full), "%s %s %s", cmd_action, argv[2], argv[3]);
+    } else if (strcmp(cmd_action, "destroy-vm") == 0) {
+        if (argc != 3) {
+            fprintf(stderr, "Invalid usage\n");
+            print_usage();
+            return -1;
+        }
         snprintf(cmd_full, sizeof(cmd_full), "%s %s", cmd_action, argv[2]);
     } else {
         fprintf(stderr, "Unknown command: %s\n", cmd_action);

@@ -39,7 +39,7 @@ typedef void (*vm_handler_fn)(struct vm_instance *VM, void *arg);
 typedef void (*core_handler_fn)(struct vm_instance *VM, int core_id, void *arg);
 
 int vm_mngr_instance_create(int vm_id, char *core_set);
-void vm_mngr_instance_destroy(int vm_id);
+int vm_mngr_instance_destroy(int vm_id);
 void vm_mngr_for_each_vm(vm_handler_fn vm_handler, void *arg);
 void  vm_mngr_for_each_core(struct vm_instance *VM, core_handler_fn core_handler, void *arg);
 
