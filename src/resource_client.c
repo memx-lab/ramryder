@@ -87,12 +87,12 @@ int main(int argc, char *argv[])
         }
         // TODO: implementation
         snprintf(cmd_full, sizeof(cmd_full), "add-mem %s", argv[2]);
-    } else if (strcmp(cmd_action, "get-mem-bw") == 0) {
+    } else if (strcmp(cmd_action, "get-mem-pool") == 0) {
         if (argc != 2) {
-            fprintf(stderr, "Invalid usage: get-mem-bw (no arguments required)\n");
+            fprintf(stderr, "Invalid usage: get-mem-pool (no arguments required)\n");
             return -1;
         }
-        snprintf(cmd_full, sizeof(cmd_full), "get-mem-bw");
+        snprintf(cmd_full, sizeof(cmd_full), "get-mem-pool");
     } else {
         fprintf(stderr, "Unknown command: %s\n", cmd_action);
         return -1;

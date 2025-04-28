@@ -109,7 +109,7 @@ static void rpc_server_start(void)
                     // TODO: implementation
                     //response = hotplug_dimm();
                     response = strdup("OK");
-                } else if (strcmp(cmd, "get-mem-bw") == 0) {
+                } else if (strcmp(cmd, "get-mem-pool") == 0) {
                     response = malloc(BUFFER_SIZE);
                     memory_pool_get_usage(response, BUFFER_SIZE);
                 } else {
