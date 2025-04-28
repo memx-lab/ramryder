@@ -204,13 +204,19 @@ end:
     }
 }
 
+static void __vm_destroy(struct vm_instance *VM, void *arg)
+{
+    vm_mngr_instance_destroy(VM->vm_id);
+}
+
 static void handle_signal(int signum __attribute__((unused)))
 {
     printf("\nResource Manager shutting down...\n");
 
     rpc_server_stop();
     guest_monitor_server_stop();
-    vm_mngr_instance_destroy(0);
+    // destroy all VMs in case users did not release VMs before stopping
+    vm_mngr_for_each_vm(__vm_destroy, NULL);
     exit(0);
 }
 
@@ -225,8 +231,6 @@ int main()
     if (guest_monitor_server_start(CONFIG_FILE) != 0) {
         exit(EXIT_FAILURE);
     }
-
-    //vm_mngr_instance_create(0, "20-39,60-79");
 
     rpc_server_start();
 
