@@ -32,9 +32,138 @@ static void rpc_server_stop(void)
     }
 }
 
-static void rpc_server_start(void)
+static char *rpc_handle_get_mem_info(char *args)
+{
+    int vm_id;
+    char *response = NULL;
+
+    if (sscanf(args, "vid=%d", &vm_id) == 1) {
+        response = guest_agent_get_meminfo(vm_id);
+    } else {
+        response = strdup("Invalid args");
+    }
+
+    return response;
+}
+
+static char *rpc_handle_get_mem_pool(void)
+{
+    char *response = NULL;
+
+    response = malloc(BUFFER_SIZE);
+    memory_pool_get_usage(response, BUFFER_SIZE);
+
+    return response;
+}
+
+static char *rpc_handle_allocate_mem(char *args)
 {
     int ret;
+    char *response = NULL;
+    int tid = -1, did = -1, vid = -1, size_mb = -1;
+    struct memory_request mem_req;
+
+    ret = sscanf(args, "tid=%d did=%d vid=%d size=%d", &tid, &did, &vid, &size_mb);
+    if (ret != 4 || tid < 0 || did < 0|| vid < 0 || size_mb <= 0) {
+        response = strdup("Invalid args");
+        return response;
+    }
+
+    response = malloc(BUFFER_SIZE);
+    ret = memory_pool_allocate_segments(tid, did, vid, size_mb, &mem_req);
+    if (ret == 0) {
+        snprintf(response, BUFFER_SIZE, "mem-path=%s,size=%dM,align=2M,offset=%dM",
+            mem_req.dev_path, mem_req.size_mb, mem_req.offset_mb);
+    } else {
+        snprintf(response, BUFFER_SIZE, "Allocate failed\n");
+    }
+
+    return response;
+}
+
+static char *rpc_handle_release_mem(char *args)
+{
+    int ret;
+    char *response = NULL;
+    int tid = -1, did = -1, vid = -1, offset_mb = -1, size_mb = -1;
+
+    ret = sscanf(args, "tid=%d did=%d vid=%d offset=%d size=%d",
+                    &tid, &did, &vid, &offset_mb, &size_mb);
+    if (ret != 5 || tid < 0 || did < 0|| vid < 0 || offset_mb < 0 || size_mb <= 0) {
+        response = strdup("Invalid args");
+        return response;
+    }
+
+    response = malloc(BUFFER_SIZE);
+    ret = memory_pool_release_segments(tid, did, vid, offset_mb, size_mb);
+    if (ret == 0) {
+        snprintf(response, BUFFER_SIZE, "Release success\n");
+    } else {
+        snprintf(response, BUFFER_SIZE, "Release failed\n");
+    }
+
+    return response;
+}
+
+static char *rpc_handle_create_vm(char *args)
+{
+    int ret;
+    int vid = -1;
+    char *response = NULL;
+    char coreset_str[BUFFER_SIZE] = {0};
+
+    ret = sscanf(args, "vid=%d coreset=%[^\n]", &vid, coreset_str);
+    if (ret != 2 || vid < 0) {
+        response = strdup("Invalid args");
+        return response;
+    }
+
+    char *start = strchr(coreset_str, '[');
+    char *end = strchr(coreset_str, ']');
+    if (!start || !end || start >= end) {
+        response = strdup("Invalid command");
+        return response;
+    }
+
+    start++;
+    *end = '\0';
+    response = malloc(BUFFER_SIZE);
+    // create VM must be called after VM boots
+    // since it will connet qemu guest agent
+    ret = vm_mngr_instance_create(vid, start);
+    if (ret == 0) {
+        snprintf(response, BUFFER_SIZE, "Create VM %d success, coreset: %s", vid, start);
+    } else {
+        snprintf(response, BUFFER_SIZE, "Create VM %d failed, coreset: %s", vid, start);
+    }
+
+    return response;
+}
+
+static char *rpc_handle_destroy_vm(char *args)
+{
+    int ret;
+    int vid;
+    char *response = NULL;
+
+    ret = sscanf(args, "vid=%d", &vid);
+    if (ret != 1 || vid < 0) {
+        response = strdup("Invalid args");
+        return response;
+    }
+    response = malloc(BUFFER_SIZE);
+    ret = vm_mngr_instance_destroy(vid);
+    if (ret == 0) {
+        snprintf(response, BUFFER_SIZE, "Destroy VM %d success", vid);
+    } else {
+        snprintf(response, BUFFER_SIZE, "Destroy VM %d failed", vid);
+    }
+
+    return response;
+}
+
+static void rpc_server_start(void)
+{
     int num_events = 0;
     char *response = NULL;
     char buffer[BUFFER_SIZE] = {0};
@@ -100,94 +229,17 @@ static void rpc_server_start(void)
                 }
 
                 if (strcmp(cmd, "get-mem-info") == 0) {
-                    int vm_id;
-                    if (sscanf(args, "vid=%d", &vm_id) == 1) {
-                        response = guest_agent_get_meminfo(vm_id);
-                    } else {
-                        response = strdup("Invalid args");
-                    }
+                    response = rpc_handle_get_mem_info(args);
                 } else if (strcmp(cmd, "get-mem-pool") == 0) {
-                    response = malloc(BUFFER_SIZE);
-                    memory_pool_get_usage(response, BUFFER_SIZE);
+                    response = rpc_handle_get_mem_pool();
                 } else if (strcmp(cmd, "allocate-mem") == 0) {
-                    int tid = -1, did = -1, vid = -1, size_mb = -1;
-                    struct memory_request mem_req;
-
-                    ret = sscanf(args, "tid=%d did=%d vid=%d size=%d", &tid, &did, &vid, &size_mb);
-                    if (ret != 4 || tid < 0 || did < 0|| vid < 0 || size_mb <= 0) {
-                        response = strdup("Invalid args");
-                        goto end;
-                    }
-                    response = malloc(BUFFER_SIZE);
-                    ret = memory_pool_allocate_segments(tid, did, vid, size_mb, &mem_req);
-                    if (ret == 0) {
-                        snprintf(response, BUFFER_SIZE, "mem-path=%s,size=%dM,align=2M,offset=%dM",
-                            mem_req.dev_path, mem_req.size_mb, mem_req.offset_mb);
-                    } else {
-                        snprintf(response, BUFFER_SIZE, "Allocate failed\n");
-                    }
+                    response = rpc_handle_allocate_mem(args);
                 } else if (strcmp(cmd, "release-mem") == 0) {
-                    int tid = -1, did = -1, vid = -1, offset_mb = -1, size_mb = -1;
-
-                    ret = sscanf(args, "tid=%d did=%d vid=%d offset=%d size=%d",
-                                    &tid, &did, &vid, &offset_mb, &size_mb);
-                    if (ret != 5 || tid < 0 || did < 0|| vid < 0 || offset_mb < 0 || size_mb <= 0) {
-                        response = strdup("Invalid args");
-                        goto end;
-                    }
-                    response = malloc(BUFFER_SIZE);
-                    ret = memory_pool_release_segments(tid, did, vid, offset_mb, size_mb);
-                    if (ret == 0) {
-                        snprintf(response, BUFFER_SIZE, "Release success\n");
-                    } else {
-                        snprintf(response, BUFFER_SIZE, "Release failed\n");
-                    }
-                } else if (strcmp(cmd, "add-mem") == 0) {
-                    // TODO: implementation
-                    //response = hotplug_dimm();
-                    response = strdup("OK");
+                    response = rpc_handle_release_mem(args);
                 } else if (strcmp(cmd, "create-vm") == 0) {
-                    int vid = -1;
-                    char coreset_str[BUFFER_SIZE] = {0};
-
-                    ret = sscanf(args, "vid=%d coreset=%[^\n]", &vid, coreset_str);
-                    if (ret != 2 || vid < 0) {
-                        response = strdup("Invalid args");
-                        goto end;
-                    }
-
-                    char *start = strchr(coreset_str, '[');
-                    char *end = strchr(coreset_str, ']');
-                    if (!start || !end || start >= end) {
-                        response = strdup("Invalid command");
-                        goto end;
-                    }
-
-                    start++;
-                    *end = '\0';
-                    response = malloc(BUFFER_SIZE);
-                    // create VM must be called after VM boots
-                    // since it will connet qemu guest agent
-                    ret = vm_mngr_instance_create(vid, start);
-                    if (ret == 0) {
-                        snprintf(response, BUFFER_SIZE, "Create VM %d success, coreset: %s", vid, start);
-                    } else {
-                        snprintf(response, BUFFER_SIZE, "Create VM %d failed, coreset: %s", vid, start);
-                    }
+                    response = rpc_handle_create_vm(args);
                 } else if (strcmp(cmd, "destroy-vm") == 0) {
-                    int vid;
-                    ret = sscanf(args, "vid=%d", &vid);
-                    if (ret != 1 || vid < 0) {
-                        response = strdup("Invalid args");
-                        goto end;
-                    }
-                    response = malloc(BUFFER_SIZE);
-                    ret = vm_mngr_instance_destroy(vid);
-                    if (ret == 0) {
-                        snprintf(response, BUFFER_SIZE, "Destroy VM %d success", vid);
-                    } else {
-                        snprintf(response, BUFFER_SIZE, "Destroy VM %d failed", vid);
-                    }
+                    response = rpc_handle_destroy_vm(args);
                 } else {
                     response = strdup("Invalid command");
                 }
@@ -197,14 +249,16 @@ static void rpc_server_start(void)
                 }
 end:
                 send(client_fd, response, strlen(response), 0);
-                free(response);
+                if (response) {
+                    free(response);
+                }
                 close(client_fd);
             }
         }
     }
 }
 
-static void __vm_destroy(struct vm_instance *VM, void *arg)
+static void __vm_destroy(struct vm_instance *VM, void *arg __attribute__((unused)))
 {
     vm_mngr_instance_destroy(VM->vm_id);
 }
