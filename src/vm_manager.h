@@ -11,7 +11,6 @@
 
 #define MAX_NUM_VM 16
 
-
 struct vm_instance {
     // basic
     int vm_id;

@@ -8,7 +8,6 @@
 
 #define MAX_DEVICES 10
 #define MAX_SEGMENTS 4096
-#define DEV_INFO_SIZE 1024
 
 struct memory_segment {
     bool allocated;
@@ -292,45 +291,12 @@ void memory_pool_get_usage(char *buffer, int buffer_size)
 int memory_pool_init(const char* config_file)
 {
     int ret;
-#ifdef ENABLE_DEBUG
-    char buffer[DEV_INFO_SIZE];
-    struct memory_request mem_req;
-#endif
 
     ret = _init_memory_resource(config_file);
     if (ret != 0) {
         perror("Failed to init memory resource\n");
         return -1;
     }
-
-#ifdef ENABLE_DEBUG
-    memory_pool_get_usage(buffer, DEV_INFO_SIZE);
-    printf("%s", buffer);
-
-    // TODO: move to unit tests
-    ret = memory_pool_allocate_segments(0, 1, 0, 128, &mem_req);
-    assert(ret == 0);
-    assert(mem_req.offset_mb == 0);
-    assert(mem_req.size_mb == 128);
-
-    ret = memory_pool_allocate_segments(0, 1, 0, 256, &mem_req);
-    assert(ret == 0);
-    assert(mem_req.offset_mb == 128);
-    assert(mem_req.size_mb == 256);
-
-    ret = memory_pool_release_segments(0, 1, 0, 128, 128);
-    assert(ret == 0);
-
-    ret = memory_pool_allocate_segments(0, 1, 0, 256, &mem_req);
-    assert(ret == 0);
-    assert(mem_req.offset_mb == 384);
-    assert(mem_req.size_mb == 256);
-
-    ret = memory_pool_allocate_segments(0, 1, 0, 128, &mem_req);
-    assert(ret == 0);
-    assert(mem_req.offset_mb == 128);
-    assert(mem_req.size_mb == 128);
-#endif
 
     return 0;
 }

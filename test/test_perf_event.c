@@ -5,7 +5,9 @@
 #include <linux/perf_event.h>
 #include <perfmon/pfmlib.h>
 #include <perfmon/pfmlib_perf_event.h>
+#include "perf_counter.h"
 
+#if 0
 const char *perf_event_name_arr[] = {
     "INST_RETIRED.ANY_P",
     "CPU_CLK_UNHALTED.THREAD_P",
@@ -23,6 +25,7 @@ const char *perf_event_name_arr[] = {
     "OCR.READS_TO_CORE_L3_MISS_LOCAL_SOCKET",
     "OCR.HWPF_L3_L3_MISS_LOCAL",
 };
+#endif
 
 void print_perf_event_attr(const struct perf_event_attr *attr, const char *name, const char *fstr) {
     printf("Event: %-50s\n", name);

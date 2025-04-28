@@ -3,4 +3,7 @@ scripts/log
 src/resource_client
 src/resource_manager
 src/elasticmm.conf
-test/perf_event_test
+
+test/test_perf_event
+test/test_memory_pool
+test/elasticmm.conf
