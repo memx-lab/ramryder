@@ -34,6 +34,7 @@ static void rpc_server_stop(void)
 
 static void rpc_server_start(void)
 {
+    int ret;
     int num_events = 0;
     char *response = NULL;
     char buffer[BUFFER_SIZE] = {0};
@@ -105,13 +106,31 @@ static void rpc_server_start(void)
                     } else {
                         response = strdup("Invalid args");
                     }
+                } else if (strcmp(cmd, "get-mem-pool") == 0) {
+                    response = malloc(BUFFER_SIZE);
+                    memory_pool_get_usage(response, BUFFER_SIZE);
+                } else if (strcmp(cmd, "allocate-mem") == 0) {
+                    int tid = -1, did = -1, vid = -1, size_mb = -1;
+                    struct memory_request mem_req;
+
+                    ret = sscanf(args, "tid=%d did=%d vid=%d size=%d", &tid, &did, &vid, &size_mb);
+                    if (ret != 4 || tid < 0 || did < 0|| vid < 0 || size_mb <= 0) {
+                        response = strdup("Invalid args");
+                        goto end;
+                    }
+
+                    ret = memory_pool_allocate_segments(tid, did, vid, size_mb, &mem_req);
+                    if (ret != 0) {
+                        response = strdup("Invalid args");
+                        goto end;
+                    }
+                    response = malloc(BUFFER_SIZE);
+                    snprintf(response, BUFFER_SIZE, "mem-path=%s,size=%dM,align=2M,offset=%dM",
+                            mem_req.dev_path, mem_req.size_mb, mem_req.offset_mb);
                 } else if (strcmp(cmd, "add-mem") == 0) {
                     // TODO: implementation
                     //response = hotplug_dimm();
                     response = strdup("OK");
-                } else if (strcmp(cmd, "get-mem-pool") == 0) {
-                    response = malloc(BUFFER_SIZE);
-                    memory_pool_get_usage(response, BUFFER_SIZE);
                 } else {
                     response = strdup("Invalid command");
                 }
@@ -150,7 +169,7 @@ int main()
         exit(EXIT_FAILURE);
     }
 
-    vm_mngr_instance_create(0, "20-39,60-79");
+    //vm_mngr_instance_create(0, "20-39,60-79");
 
     rpc_server_start();
 

@@ -58,8 +58,9 @@ static void print_usage(void)
 {
     fprintf(stderr, "Usage:\n");
     fprintf(stderr, "   get-mem-info <vm_id>\n");
+    fprintf(stderr, "   get-mem-pool\n");
+    fprintf(stderr, "   allocate-mem tid=<tid> did=<dev id> vid=<vm id> size=<mb>\n");
     fprintf(stderr, "   add-mem size=<mb>\n");
-    fprintf(stderr, "   get-mem-bw\n");
 }
 
 int main(int argc, char *argv[])
@@ -76,25 +77,36 @@ int main(int argc, char *argv[])
 
     if (strcmp(cmd_action, "get-mem-info") == 0) {
         if (argc != 3 || atoi(argv[2]) < 0) {
-            fprintf(stderr, "Invalid usage: get-meminfo <vm_id>\n");
+            fprintf(stderr, "Invalid usage\n");
+            print_usage();
             return -1;
         }
-        snprintf(cmd_full, sizeof(cmd_full), "get-mem-info %d", atoi(argv[2]));
+        snprintf(cmd_full, sizeof(cmd_full), "%s %d", cmd_action, atoi(argv[2]));
+    } else if (strcmp(cmd_action, "get-mem-pool") == 0) {
+        if (argc != 2) {
+            fprintf(stderr, "Invalid usage\n");
+            print_usage();
+            return -1;
+        }
+        snprintf(cmd_full, sizeof(cmd_full), "%s", cmd_action);
+    } else if (strcmp(cmd_action, "allocate-mem") == 0) {
+        if (argc != 6) { // TODO: check individual args
+            fprintf(stderr, "Invalid usage\n");
+            print_usage();
+            return -1;
+        }
+        snprintf(cmd_full, sizeof(cmd_full), "%s %s %s %s %s", cmd_action, argv[2], argv[3], argv[4], argv[5]);
     } else if (strcmp(cmd_action, "add-mem") == 0) {
         if (argc != 3 || strncmp(argv[2], "size=", 5) != 0 || atoi(argv[2] + 5) <= 0) {
-            fprintf(stderr, "Invalid usage: add-mem size=<mb>\n");
+            fprintf(stderr, "Invalid usage\n");
+            print_usage();
             return -1;
         }
         // TODO: implementation
-        snprintf(cmd_full, sizeof(cmd_full), "add-mem %s", argv[2]);
-    } else if (strcmp(cmd_action, "get-mem-pool") == 0) {
-        if (argc != 2) {
-            fprintf(stderr, "Invalid usage: get-mem-pool (no arguments required)\n");
-            return -1;
-        }
-        snprintf(cmd_full, sizeof(cmd_full), "get-mem-pool");
+        snprintf(cmd_full, sizeof(cmd_full), "%s %s", cmd_action, argv[2]);
     } else {
         fprintf(stderr, "Unknown command: %s\n", cmd_action);
+        print_usage();
         return -1;
     }
 
