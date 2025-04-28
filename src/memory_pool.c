@@ -29,7 +29,7 @@ static int g_dev_count = 0;
 static int g_segment_size_mb = 0;
 
 static inline bool is_aligned(int value, int alignment) {
-    return value > 0 && (value % alignment == 0);
+    return value >= 0 && (value % alignment == 0);
 }
 
 static int find_free_segments(struct memory_dax_dev *mem_dev, int num_segments)

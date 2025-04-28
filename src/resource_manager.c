@@ -118,15 +118,30 @@ static void rpc_server_start(void)
                         response = strdup("Invalid args");
                         goto end;
                     }
-
+                    response = malloc(BUFFER_SIZE);
                     ret = memory_pool_allocate_segments(tid, did, vid, size_mb, &mem_req);
-                    if (ret != 0) {
+                    if (ret == 0) {
+                        snprintf(response, BUFFER_SIZE, "mem-path=%s,size=%dM,align=2M,offset=%dM",
+                            mem_req.dev_path, mem_req.size_mb, mem_req.offset_mb);
+                    } else {
+                        snprintf(response, BUFFER_SIZE, "Allocate failed\n");
+                    }
+                } else if (strcmp(cmd, "release-mem") == 0) {
+                    int tid = -1, did = -1, vid = -1, offset_mb = -1, size_mb = -1;
+
+                    ret = sscanf(args, "tid=%d did=%d vid=%d offset=%d size=%d",
+                                    &tid, &did, &vid, &offset_mb, &size_mb);
+                    if (ret != 5 || tid < 0 || did < 0|| vid < 0 || offset_mb < 0 || size_mb <= 0) {
                         response = strdup("Invalid args");
                         goto end;
                     }
                     response = malloc(BUFFER_SIZE);
-                    snprintf(response, BUFFER_SIZE, "mem-path=%s,size=%dM,align=2M,offset=%dM",
-                            mem_req.dev_path, mem_req.size_mb, mem_req.offset_mb);
+                    ret = memory_pool_release_segments(tid, did, vid, offset_mb, size_mb);
+                    if (ret == 0) {
+                        snprintf(response, BUFFER_SIZE, "Release success\n");
+                    } else {
+                        snprintf(response, BUFFER_SIZE, "Release failed\n");
+                    }
                 } else if (strcmp(cmd, "add-mem") == 0) {
                     // TODO: implementation
                     //response = hotplug_dimm();
