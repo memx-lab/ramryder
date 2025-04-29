@@ -1,9 +1,11 @@
 #!/bin/bash
 
+# Load common settings
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+
 # unique ID for each VM
 VMID=0
 
-SOCK_PATH=/var/run
 NAME=VM-NUMA-$VMID
 QMP_SOCK=$SOCK_PATH/qmp-sock-$VMID
 QGA_SOCK=$SOCK_PATH/qga-sock-$VMID
@@ -13,7 +15,8 @@ IMGDIR=$HOME/images
 # Virtual machine disk image
 OSIMGF=$IMGDIR/u20s.qcow2
 # qemu binary
-QEMU_BIN=/home/yaz093/qemu/build/qemu-system-x86_64
+QEMU_BIN="$PROJECT_ROOT/qemu/build/qemu-system-x86_64"
+
 CPU_BIND_12='taskset -c 20-25,60-65'
 CPU_BIND_16='taskset -c 20-27,60-67'
 CPU_BIND_20='taskset -c 20-29,60-69'

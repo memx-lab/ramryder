@@ -1,11 +1,14 @@
 #!/bin/bash
 
+# Load common settings
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+
 # image directory
 IMGDIR=$HOME/images
 # Virtual machine disk image
 OSIMGF=$IMGDIR/u20s.qcow2
 # qemu binary
-QEMU_BIN=/home/yaz093/qemu/build/qemu-system-x86_64
+QEMU_BIN="$PROJECT_ROOT/qemu/build/qemu-system-x86_64"
 
 sudo $QEMU_BIN \
     -name "Test-VM" \

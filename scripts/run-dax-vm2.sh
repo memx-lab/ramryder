@@ -1,11 +1,15 @@
 #!/bin/bash
 
+# Load common settings
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+
 # image directory
 IMGDIR=$HOME/images
 # Virtual machine disk image
 OSIMGF=$IMGDIR/u20s2.qcow2
 # qemu binary
-QEMU_BIN=/home/yaz093/qemu/build/qemu-system-x86_64
+QEMU_BIN="$PROJECT_ROOT/qemu/build/qemu-system-x86_64"
+
 #CPU_BIND_12='taskset -c 26-31,66-71'
 CPU_BIND_20='taskset -c 30-39,70-79'
 #CPU_BIND_24='taskset -c 28-39,68-79'
