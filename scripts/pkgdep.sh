@@ -4,7 +4,7 @@
 set -e
 
 # Detect platform
-detect_distro() {
+detect_os() {
     if [ -f /etc/os-release ]; then
         . /etc/os-release
         DISTRO_ID=$ID
@@ -14,8 +14,14 @@ detect_distro() {
     fi
 }
 
+# Install python related libs
+install_python_lib() {
+    # used by qemu
+    pip3 install --user tomli
+}
+
 # Install libcurl development package
-install_libcurl() {
+install_sys_lib() {
     echo "[INFO] Installing libcurl development package for $DISTRO_ID..."
 
     case "$DISTRO_ID" in
@@ -39,5 +45,6 @@ install_libcurl() {
 }
 
 # Main
-detect_distro
-install_libcurl
+detect_os
+install_python_lib
+install_sys_lib
