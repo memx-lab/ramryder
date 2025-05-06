@@ -16,7 +16,7 @@
 // for monitor
 static volatile int running = 1;
 static pthread_t monitor_thread;
-static uint32_t monitor_interval_in_second = 3;
+static uint32_t monitor_interval_in_second = 5;
 
 // for cloud db
 #define INFLUXDB_DATA_LENGTH 256
