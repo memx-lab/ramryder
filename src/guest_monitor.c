@@ -233,7 +233,7 @@ static void *__monitor_loop(void *arg __attribute__((unused)))
 
         /* TODO: Monitor memory latency of each VM */
         //vm_mngr_update_perf_counters();
-        //vm_mngr_update_metrics(operation_window_s);
+        //vm_mngr_update_metrics(monitor_interval_in_second);
 
         usleep(monitor_interval_in_us);
     }
