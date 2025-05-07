@@ -246,9 +246,11 @@ static void *__monitor_loop(void *arg __attribute__((unused)))
         /*Monitor memory bandwidth usage of each VM */
         vm_mngr_for_each_vm(__get_vm_mem_bw_usage, &core_metrics);
 
-        /* TODO: Monitor memory latency of each VM */
-        //vm_mngr_update_perf_counters();
-        //vm_mngr_update_metrics(monitor_interval_in_second);
+#ifdef ENABLE_PERF
+        /* Monitor memory latency of each VM */
+        vm_mngr_update_perf_counters();
+        vm_mngr_update_metrics(monitor_interval_in_second);
+#endif
 
         usleep(monitor_interval_in_us);
     }

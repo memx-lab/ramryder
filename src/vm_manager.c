@@ -22,6 +22,10 @@ void vm_mngr_for_each_vm(vm_handler_fn vm_handler, void *arg)
 {
     struct vm_instance *VM;
 
+    if (g_vm_mngr.count == 0) {
+        return;
+    }
+
     for (int i = 0; i < MAX_NUM_VM; i++) {
         VM = &g_vm_mngr.VMs[i];
         if (!VM->initialized) {
@@ -59,7 +63,7 @@ void  vm_mngr_for_each_core(struct vm_instance *VM, core_handler_fn core_handler
     free(copy);
 }
 
-#if 0
+#ifdef ENABLE_PERF
 static void __vm_perf_counter_setup_core(struct vm_instance *VM, int core_id,
                         void *arg __attribute__((unused)))
 {
@@ -191,11 +195,15 @@ int vm_mngr_instance_create(int vm_id, char *core_set)
     // TODO: check core overlap with other VMs
     snprintf(VM->core_set, sizeof(VM->core_set), "%s", core_set);
     vm_mngr_for_each_core(VM, __vm_num_core_update, NULL);
-    //vm_perf_counter_setup(VM);
+#ifdef ENABLE_PERF
+    vm_perf_counter_setup(VM);
+#endif
     ret = guest_agent_init(vm_id);
     if (ret < 0) {
         fprintf(stderr, "Failed to init guest agent for vm %d\n", vm_id);
-        //vm_perf_counter_teardown(VM);
+#ifdef ENABLE_PERF
+        vm_perf_counter_teardown(VM);
+#endif
         vm_struct_reset(VM);
         return -1;
     }
@@ -228,7 +236,9 @@ int vm_mngr_instance_destroy(int vm_id)
     }
 
     guest_agent_cleanup(VM->vm_id);
-    //vm_perf_counter_teardown(VM);
+#ifdef ENABLE_PERF
+    vm_perf_counter_teardown(VM);
+#endif
     vm_struct_reset(VM);
 
     g_vm_mngr.count--;
@@ -237,16 +247,23 @@ int vm_mngr_instance_destroy(int vm_id)
     return 0;
 }
 
-#if 0
+#ifdef ENABLE_PERF
 void vm_mngr_update_perf_counters(void)
 {
     struct vm_instance *VM;
+
+    if (g_vm_mngr.count == 0) {
+        return;
+    }
 
     for (int i = 0; i < MAX_NUM_VM; i++) {
         VM = &g_vm_mngr.VMs[i];
         if (!VM->initialized) {
             continue;
         }
+#ifdef ENABLE_DEBUG
+    printf("###### VM %d Perf Events:\n", VM->vm_id);
+#endif
         for (int j = 0; j < PERF_EVENT_TYPE_MAX; ++j) {
 			uint64_t new_cum_count = 0;
 			for (int k = 0; k < VM->num_cores; ++k) {
@@ -258,74 +275,39 @@ void vm_mngr_update_perf_counters(void)
 			}
 			VM->delta_perf_event_counts[j] = new_cum_count - VM->cum_perf_event_counts[j];
 			VM->cum_perf_event_counts[j] = new_cum_count;
+#ifdef ENABLE_DEBUG
+            printf("Event: %-60s: %lu\n", perf_event_name_arr[j], new_cum_count);
+#endif
 		}
     }
 }
 
-#define TSC_FREQ 2.2e9
-void vm_mngr_update_metrics(int operation_window_s)
+#define TSC_FREQ 2.1e9
+void vm_mngr_update_metrics(int operation_window_s __attribute__((unused)))
 {
     double ewma_constant = 0.2;
     struct vm_instance *VM;
+
+    if (g_vm_mngr.count == 0) {
+        return;
+    }
+
 	for (int i = 0; i < MAX_NUM_VM; i++) {
         VM = &g_vm_mngr.VMs[i];
         if (!VM->initialized) {
             continue;
         }
-		VM->cur_metrics[METRIC_TYPE_DTLB_LOAD_MISS_LAT] =
-			(double) VM->delta_perf_event_counts[PERF_EVENT_TYPE_DTLB_LOAD_MISSES_WALK_ACTIVE]
-			/ (double) VM->delta_perf_event_counts[PERF_EVENT_TYPE_DTLB_LOAD_MISSES_WALK_COMPLETED];
-		VM->cur_metrics[METRIC_TYPE_DLTB_LOAD_MPI] =
-			(double) VM->delta_perf_event_counts[PERF_EVENT_TYPE_DTLB_LOAD_MISSES_WALK_COMPLETED]
-			/ (double) VM->delta_perf_event_counts[PERF_EVENT_TYPE_INST_RETIRED];
+
+        // L3 miss latency (i.e., main memory access latency)
 		VM->cur_metrics[METRIC_TYPE_LOAD_L3_MISS_LAT] =
 			1e9 * ((double) VM->delta_perf_event_counts[PERF_EVENT_TYPE_OCR_OUTSTANDING_L3_MISS_DEMAND_DATA_RD]
 					/ (double) VM->delta_perf_event_counts[PERF_EVENT_TYPE_OCR_L3_MISS_DEMAND_DATA_RD])
 			/ ((double) VM->delta_perf_event_counts[PERF_EVENT_TYPE_CPU_CLK_UNHALTED_THREAD]
 				/ (double) VM->delta_perf_event_counts[PERF_EVENT_TYPE_CPU_CLK_UNHALTED_REF_TSC]
 				* TSC_FREQ);
-		VM->cur_metrics[METRIC_TYPE_LOAD_L2_MISS_LAT] =
-			1e9 * ((double) VM->delta_perf_event_counts[PERF_EVENT_TYPE_OCR_OUTSTANDING_DEMAND_DATA_RD]
-					/ (double) VM->delta_perf_event_counts[PERF_EVENT_TYPE_OCR_DEMAND_DATA_RD])
-			/ ((double) VM->delta_perf_event_counts[PERF_EVENT_TYPE_CPU_CLK_UNHALTED_THREAD]
-				/ (double) VM->delta_perf_event_counts[PERF_EVENT_TYPE_CPU_CLK_UNHALTED_REF_TSC]
-				* TSC_FREQ);
-		VM->cur_metrics[METRIC_TYPE_L2_DEMAND_DATA_RD_MPI] =
-			(double) VM->delta_perf_event_counts[PERF_EVENT_TYPE_MEM_LOAD_RETIRED_L2_MISS]
-			/ (double) VM->delta_perf_event_counts[PERF_EVENT_TYPE_INST_RETIRED];
-		VM->cur_metrics[METRIC_TYPE_L2_MPI] =
-			(double) VM->delta_perf_event_counts[PERF_EVENT_TYPE_L2_LINES_IN_ALL]
-			/ (double) VM->delta_perf_event_counts[PERF_EVENT_TYPE_INST_RETIRED];
-		double a, b;
-		a = (double) VM->delta_perf_event_counts[PERF_EVENT_TYPE_OCR_READS_TO_CORE_L3_MISS_LOCAL_SOCKET];
-		b = (double) VM->delta_perf_event_counts[PERF_EVENT_TYPE_OCR_HWPF_L3_L3_MISS_LOCAL];
-		double read_count = a + b;
-		VM->cur_metrics[METRIC_TYPE_CORE_READ] = read_count * 64 / 1e6;
-		VM->cur_metrics[METRIC_TYPE_CORE_READ] /= operation_window_s;
-
-		a = (double) VM->delta_perf_event_counts[PERF_EVENT_TYPE_OCR_MODIFIED_WRITE_ANY_RESPONSE];
-		b = (double) VM->delta_perf_event_counts[PERF_EVENT_TYPE_OCR_RFO_TO_CORE_L3_HIT_M];
-		double write_count = MAX(0.0, (a - b));
-		VM->cur_metrics[METRIC_TYPE_CORE_WRITE] = (a - b) * 64 / 1e6;
-		VM->cur_metrics[METRIC_TYPE_CORE_WRITE] /= operation_window_s;
-
-		VM->cur_metrics[METRIC_TYPE_2LM_MISS_RATIO] = L3_MISS_LAT_TO_2LM_MR_INTERCEPT
-			+ L3_MISS_LAT_TO_2LM_MR_SLOPE * VM->cur_metrics[METRIC_TYPE_LOAD_L3_MISS_LAT];
-		VM->cur_metrics[METRIC_TYPE_2LM_MISS_RATIO] = min(1.0, max(0.0, VM->cur_metrics[METRIC_TYPE_2LM_MISS_RATIO]));
-
-		VM->cur_metrics[METRIC_TYPE_2LM_MPKI] =
-			1e3 * VM->cur_metrics[METRIC_TYPE_2LM_MISS_RATIO]
-			* (read_count + write_count)
-			/ VM->delta_perf_event_counts[PERF_EVENT_TYPE_INST_RETIRED];
-
-		VM->cur_metrics[METRIC_TYPE_2LM_PER_PAGE_MISS_RATE] =
-			VM->cur_metrics[METRIC_TYPE_2LM_MISS_RATIO]
-			* (read_count + write_count)
-			/ (vm_count_all_contended(VM) + ((128 << 20) >> COLOR_PAGE_SHIFT))
-			/ operation_window_s;
 
 		for (int j = 0; j < METRIC_TYPE_MAX; ++j) {
-			VM->cur_metrics[j] = min(metric_max_arr[j], max(0.0, VM->cur_metrics[j]));
+			VM->cur_metrics[j] = MIN(metric_max_arr[j], MAX(0.0, VM->cur_metrics[j]));
 		}
 
 		// Calculate EWMA
@@ -338,6 +320,12 @@ void vm_mngr_update_metrics(int operation_window_s)
 		}
 		VM->ewma_initialized = true;
 
+#ifdef ENABLE_DEBUG
+        printf("###### VM %d Metrics:\n", VM->vm_id);
+        for (int j = 0; j < METRIC_TYPE_MAX; ++j) {
+            printf("Metric: %-60s: %f\n", metric_name_arr[j], VM->cur_metrics[j]);
+        }
+#endif
 	}
 }
 #endif

@@ -9,6 +9,7 @@
 #include <ctype.h>
 #include "perf_counter.h"
 
+#define ENABLE_PERF
 #define MAX_NUM_VM 16
 
 struct vm_instance {

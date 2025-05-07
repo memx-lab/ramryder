@@ -31,5 +31,6 @@
 #define US_TO_SECOND(x) ((x) / (US_PER_SECOND))
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 #endif // UTIL_COMMON_H

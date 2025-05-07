@@ -7,8 +7,7 @@
 #include <perfmon/pfmlib_perf_event.h>
 #include "perf_counter.h"
 
-#if 0
-const char *perf_event_name_arr[] = {
+const char *perf_event_name_arr_test[] = {
     "INST_RETIRED.ANY_P",
     "CPU_CLK_UNHALTED.THREAD_P",
     "CPU_CLK_UNHALTED.REF_TSC",
@@ -25,7 +24,6 @@ const char *perf_event_name_arr[] = {
     "OCR.READS_TO_CORE_L3_MISS_LOCAL_SOCKET",
     "OCR.HWPF_L3_L3_MISS_LOCAL",
 };
-#endif
 
 void print_perf_event_attr(const struct perf_event_attr *attr, const char *name, const char *fstr) {
     printf("Event: %-50s\n", name);
@@ -50,7 +48,7 @@ int main(void) {
         return 1;
     }
 
-    size_t num_events = sizeof(perf_event_name_arr) / sizeof(perf_event_name_arr[0]);
+    size_t num_events = sizeof(perf_event_name_arr_test) / sizeof(perf_event_name_arr_test[0]);
     for (size_t i = 0; i < num_events; ++i) {
         struct perf_event_attr attr = {};
         pfm_perf_encode_arg_t arg = {};
@@ -66,17 +64,17 @@ int main(void) {
         arg.fstr = &fstr;
         arg.flags = 0;
 
-        int ret = pfm_get_os_event_encoding(perf_event_name_arr[i],
+        int ret = pfm_get_os_event_encoding(perf_event_name_arr_test[i],
                                             PFM_PLM3,
                                             PFM_OS_PERF_EVENT,
                                             &arg);
 
         if (ret != PFM_SUCCESS) {
-            fprintf(stderr, "[!] Error encoding event '%s': %s\n", perf_event_name_arr[i], pfm_strerror(ret));
+            fprintf(stderr, "[!] Error encoding event '%s': %s\n", perf_event_name_arr_test[i], pfm_strerror(ret));
             continue;
         }
 
-        print_perf_event_attr(&attr, perf_event_name_arr[i], fstr);
+        print_perf_event_attr(&attr, perf_event_name_arr_test[i], fstr);
 
         if (fstr) free(fstr);
     }

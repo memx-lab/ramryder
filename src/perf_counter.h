@@ -15,21 +15,15 @@
 #include <pcm/pcm_c_public.h>
 
 enum PerfEventType {
+	// basic counters
 	PERF_EVENT_TYPE_INST_RETIRED = 0,
 	PERF_EVENT_TYPE_CPU_CLK_UNHALTED_THREAD,
 	PERF_EVENT_TYPE_CPU_CLK_UNHALTED_REF_TSC,
-	PERF_EVENT_TYPE_DTLB_LOAD_MISSES_WALK_ACTIVE,
-	PERF_EVENT_TYPE_DTLB_LOAD_MISSES_WALK_COMPLETED,
+
+	// L3 related counters
 	PERF_EVENT_TYPE_OCR_OUTSTANDING_L3_MISS_DEMAND_DATA_RD,
 	PERF_EVENT_TYPE_OCR_L3_MISS_DEMAND_DATA_RD,
-	PERF_EVENT_TYPE_OCR_OUTSTANDING_DEMAND_DATA_RD,
-	PERF_EVENT_TYPE_OCR_DEMAND_DATA_RD,
-	PERF_EVENT_TYPE_MEM_LOAD_RETIRED_L2_MISS,
-	PERF_EVENT_TYPE_L2_LINES_IN_ALL,
-	PERF_EVENT_TYPE_OCR_MODIFIED_WRITE_ANY_RESPONSE,
-	PERF_EVENT_TYPE_OCR_RFO_TO_CORE_L3_HIT_M,
-	PERF_EVENT_TYPE_OCR_READS_TO_CORE_L3_MISS_LOCAL_SOCKET,
-	PERF_EVENT_TYPE_OCR_HWPF_L3_L3_MISS_LOCAL,
+
 	PERF_EVENT_TYPE_MAX
 };
 
@@ -41,17 +35,8 @@ extern const char *perf_event_name_arr[PERF_EVENT_TYPE_MAX];
 
 // VM metric based on perf events
 enum MetricType {
-	METRIC_TYPE_DTLB_LOAD_MISS_LAT = 0,		// metric_DTLB load miss latency (in core clks)
-	METRIC_TYPE_DLTB_LOAD_MPI,				// metric_DTLB (2nd level) load MPI
-	METRIC_TYPE_LOAD_L3_MISS_LAT,			// metric_Load_L3_Miss_Latency_using_ORO_events(ns)
-	METRIC_TYPE_LOAD_L2_MISS_LAT,			// metric_Load_L2_Miss_Latency_using_ORO_events(ns)
-	METRIC_TYPE_L2_DEMAND_DATA_RD_MPI,		// metric_L2 demand data read MPI
-	METRIC_TYPE_L2_MPI,						// metric_L2 MPI (includes code+data+rfo w/ prefetches)
-	METRIC_TYPE_CORE_READ,					// metric_core initiated local socket memory read bandwidth (MB/sec)
-	METRIC_TYPE_CORE_WRITE,					// metric_core initiated write bandwidth (MB/sec)
-	METRIC_TYPE_2LM_MISS_RATIO,				// metric_memory mode near memory cache read miss rate% (estimated)
-	METRIC_TYPE_2LM_MPKI,					// metric_memory mode MPKI (estimated)
-	METRIC_TYPE_2LM_PER_PAGE_MISS_RATE,		// metric_memory mode per-page miss rate (estimated)
+	METRIC_TYPE_LOAD_L3_MISS_LAT, // metric_Load_L3_Miss_Latency_using_ORO_events(ns)
+
 	METRIC_TYPE_MAX,
 };
 
