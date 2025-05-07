@@ -17,6 +17,8 @@ OSIMGF=$IMGDIR/u20s.qcow2
 # qemu binary
 QEMU_BIN="$PROJECT_ROOT/qemu/build/qemu-system-x86_64"
 
+DISK=$IMGDIR/mydisk.img
+
 CPU_BIND_12='taskset -c 20-25,60-65'
 CPU_BIND_16='taskset -c 20-27,60-67'
 CPU_BIND_20='taskset -c 20-29,60-69'
@@ -38,6 +40,7 @@ sudo $CPU_BIND_40 $QEMU_BIN \
     -device virtio-scsi-pci,id=scsi0 \
     -device scsi-hd,drive=hd0 \
     -drive file=$OSIMGF,if=none,aio=native,cache=none,format=qcow2,id=hd0 \
+    -drive file=$DISK,format=qcow2,if=virtio \
     -net user,hostfwd=tcp::2806-:22 \
     -net nic,model=virtio \
     -nographic \
