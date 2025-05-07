@@ -104,7 +104,7 @@ static void cloud_db_client_cleanup(void)
     }
 }
 
-static void _cloud_db_client_send(const char *data)
+static void cloud_db_client_send(const char *data)
 {
     CURLcode res;
 
@@ -119,7 +119,7 @@ static void _cloud_db_client_send(const char *data)
     }
 }
 
-static void upload_vm_cp_usage_to_cloud_db(struct vm_instance *VM, const char *json_str)
+static void upload_vm_cp_to_cloud_db(struct vm_instance *VM, const char *json_str)
 {
     char influx_data[INFLUXDB_DATA_LENGTH];
     struct json_object *parsed_json, *return_obj, *meminfo_list, *meminfo;
@@ -145,13 +145,13 @@ static void upload_vm_cp_usage_to_cloud_db(struct vm_instance *VM, const char *j
         snprintf(influx_data, sizeof(influx_data),
                 "guest_memory,vm_id=%d,node=%d memory_free=%d,memory_total=%d,memory_available=%d",
                 VM->vm_id, index, mem_free, mem_total, mem_available);
-        _cloud_db_client_send(influx_data);
+        cloud_db_client_send(influx_data);
     }
 
     json_object_put(parsed_json);
 }
 
-static void upload_vm_bw_usage_to_cloud_db(struct vm_instance *VM)
+static void upload_vm_bw_to_cloud_db(struct vm_instance *VM)
 {
     char influx_data[INFLUXDB_DATA_LENGTH];
 
@@ -159,7 +159,7 @@ static void upload_vm_bw_usage_to_cloud_db(struct vm_instance *VM)
              "vm_bandwidth,vm_id=%d bandwidth_local=%lu,bandwidth_remote=%lu",
              VM->vm_id, VM->mem_bw_local, VM->mem_bw_remote);
 
-    _cloud_db_client_send(influx_data);
+    cloud_db_client_send(influx_data);
 }
 
 static void upload_vm_latency_to_cloud_db(struct vm_instance *VM)
@@ -170,7 +170,7 @@ static void upload_vm_latency_to_cloud_db(struct vm_instance *VM)
              "vm_latency,vm_id=%d l3_miss_latency=%f",
              VM->vm_id, VM->cur_metrics[METRIC_TYPE_LOAD_L3_MISS_LAT]);
 
-    _cloud_db_client_send(influx_data);
+    cloud_db_client_send(influx_data);
 }
 
 static void get_sys_mem_bw_usage(memdata_t *md, core_metrics_t *core_metrics)
@@ -195,7 +195,7 @@ static void __accumulate_bw_per_core(struct vm_instance *VM, int core_id, void *
     VM->mem_bw_remote += core_metrics->core_remote_bw[core_id];
 }
 
-static void __get_vm_mem_bw_usage(struct vm_instance *VM, void *arg)
+static void __get_vm_mem_bw(struct vm_instance *VM, void *arg)
 {
     VM->mem_bw_local = 0;
     VM->mem_bw_remote = 0;
@@ -208,7 +208,7 @@ static void __get_vm_mem_bw_usage(struct vm_instance *VM, void *arg)
     VM->mem_bw_remote = VM->mem_bw_remote / monitor_interval_in_second;
 
     if (enable_cloud_db) {
-        upload_vm_bw_usage_to_cloud_db(VM);
+        upload_vm_bw_to_cloud_db(VM);
     }
 #ifdef ENABLE_DEBUG
     printf("VM %i Bandwidth, Local %lu MB/s, Remote %lu MB/s\n",
@@ -225,7 +225,7 @@ static void __get_vm_mem_latency(struct vm_instance *VM, void *arg __attribute__
     }
 }
 
-static void __get_vm_mem_cp_usage(struct vm_instance *VM, void *arg __attribute__((unused)))
+static void __get_vm_mem_cp(struct vm_instance *VM, void *arg __attribute__((unused)))
 {
     int vm_id = VM->vm_id;
     char *status_json_response;
@@ -237,7 +237,7 @@ static void __get_vm_mem_cp_usage(struct vm_instance *VM, void *arg __attribute_
     }
 
     if (enable_cloud_db) {
-        upload_vm_cp_usage_to_cloud_db(VM, status_json_response);
+        upload_vm_cp_to_cloud_db(VM, status_json_response);
     }
 
     // TODO: parse memory usage and fill VM
@@ -261,10 +261,10 @@ static void *__monitor_loop(void *arg __attribute__((unused)))
         get_sys_mem_bw_usage(&md, &core_metrics);
     
         /* Monitor memory capacity usage of each VM */
-        vm_mngr_for_each_vm(__get_vm_mem_cp_usage, NULL);
+        vm_mngr_for_each_vm(__get_vm_mem_cp, NULL);
 
         /*Monitor memory bandwidth usage of each VM */
-        vm_mngr_for_each_vm(__get_vm_mem_bw_usage, &core_metrics);
+        vm_mngr_for_each_vm(__get_vm_mem_bw, &core_metrics);
 
 #ifdef ENABLE_PERF
         /* Get perf event counters and calculate VM metrics based on raw counters */
