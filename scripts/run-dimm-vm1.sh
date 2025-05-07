@@ -28,8 +28,8 @@ sudo $CPU_BIND_40 $QEMU_BIN \
     -enable-kvm \
     -cpu host \
     -smp 40 \
-    -m 40G,slots=256,maxmem=512G \
-    -object memory-backend-file,id=mem0,share=on,mem-path=/dev/dax0.0,size=20G,align=2M \
+    -m 60G,slots=256,maxmem=512G \
+    -object memory-backend-file,id=mem0,share=on,mem-path=/dev/dax0.0,size=40G,align=2M \
     -object memory-backend-file,id=mem1,share=on,mem-path=/dev/dax1.0,size=20G,align=2M \
     -object memory-backend-file,id=mem2,share=on,mem-path=/dev/dax1.0,size=20G,align=2M,offset=20G \
     -numa node,nodeid=0,memdev=mem0,cpus=0-39,tier-id=0,dax-id=0,seg-id=0 \
