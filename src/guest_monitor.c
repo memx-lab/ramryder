@@ -16,7 +16,7 @@
 // for monitor
 static volatile int running = 1;
 static pthread_t monitor_thread;
-static uint32_t monitor_interval_in_second = 5;
+static uint32_t monitor_interval_in_second = 1;
 
 // for cloud db
 #define INFLUXDB_DATA_LENGTH 256
@@ -162,6 +162,17 @@ static void upload_vm_bw_usage_to_cloud_db(struct vm_instance *VM)
     _cloud_db_client_send(influx_data);
 }
 
+static void upload_vm_latency_to_cloud_db(struct vm_instance *VM)
+{
+    char influx_data[INFLUXDB_DATA_LENGTH];
+
+    snprintf(influx_data, sizeof(influx_data),
+             "vm_latency,vm_id=%d l3_miss_latency=%f",
+             VM->vm_id, VM->cur_metrics[METRIC_TYPE_LOAD_L3_MISS_LAT]);
+
+    _cloud_db_client_send(influx_data);
+}
+
 static void get_sys_mem_bw_usage(memdata_t *md, core_metrics_t *core_metrics)
 {
     bool output = false;
@@ -203,6 +214,15 @@ static void __get_vm_mem_bw_usage(struct vm_instance *VM, void *arg)
     printf("VM %i Bandwidth, Local %lu MB/s, Remote %lu MB/s\n",
             VM->vm_id, VM->mem_bw_local, VM->mem_bw_remote);
 #endif
+}
+
+static void __get_vm_mem_latency(struct vm_instance *VM, void *arg __attribute__((unused)))
+{
+    // VM manager already updates VM metrics and print DEBUG information
+    // Here, we only need to upload to cloud if needed.
+    if (enable_cloud_db) {
+        upload_vm_latency_to_cloud_db(VM);
+    }
 }
 
 static void __get_vm_mem_cp_usage(struct vm_instance *VM, void *arg __attribute__((unused)))
@@ -247,9 +267,12 @@ static void *__monitor_loop(void *arg __attribute__((unused)))
         vm_mngr_for_each_vm(__get_vm_mem_bw_usage, &core_metrics);
 
 #ifdef ENABLE_PERF
-        /* Monitor memory latency of each VM */
+        /* Get perf event counters and calculate VM metrics based on raw counters */
         vm_mngr_update_perf_counters();
         vm_mngr_update_metrics(monitor_interval_in_second);
+
+        /* Monitor memory latency of each VM */
+        vm_mngr_for_each_vm(__get_vm_mem_latency, NULL);
 #endif
 
         usleep(monitor_interval_in_us);
