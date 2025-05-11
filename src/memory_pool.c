@@ -54,7 +54,7 @@ static int find_free_segments(struct memory_dax_dev *mem_dev, int num_segments)
     return -1;
 }
 
-static int _allocate_segments(struct memory_dax_dev *mem_dev, int num_segments, int vm_id)
+static int allocate_segments(struct memory_dax_dev *mem_dev, int num_segments, int vm_id)
 {
     int start_index = -1;
     int free_segments = 0;
@@ -109,7 +109,7 @@ int memory_pool_allocate_segments(int tier_id, int dev_id, int vm_id,
     }
 
     num_segments = size_mb / g_segment_size_mb;
-    start_index = _allocate_segments(mem_dev, num_segments, vm_id);
+    start_index = allocate_segments(mem_dev, num_segments, vm_id);
     if (start_index < 0) {
         fprintf(stderr, "Filed to alllocate segments\n");
         return -1;
@@ -125,7 +125,7 @@ int memory_pool_allocate_segments(int tier_id, int dev_id, int vm_id,
     return 0;
 }
 
-static int _release_segments(struct memory_dax_dev *mem_dev, int vm_id, 
+static int release_segments(struct memory_dax_dev *mem_dev, int vm_id, 
                         int start_index, int segment_count) {
     for (int i = 0; i < segment_count; i++) {
         int idx = start_index + i;
@@ -176,7 +176,7 @@ int memory_pool_release_segments(int tier_id, int dev_id, int vm_id,
     start_index = offset_mb / g_segment_size_mb;
     segment_count = size_mb / g_segment_size_mb;
 
-    ret = _release_segments(mem_dev, vm_id, start_index, segment_count);
+    ret = release_segments(mem_dev, vm_id, start_index, segment_count);
     if (ret < 0) {
         fprintf(stderr, "Failed to release all segments, tier id: %d, dev id: %d, vm id: %d, offset: %dMB, size: %dMB\n",
         tier_id, dev_id, vm_id, offset_mb, size_mb);   
@@ -249,7 +249,7 @@ static int memory_pool_load_config(const char* config_file)
     return 0;
 }
 
-static int _init_memory_resource(const char* config_file)
+static int init_memory_resource(const char* config_file)
 {
     int ret;
 
@@ -292,7 +292,7 @@ int memory_pool_init(const char* config_file)
 {
     int ret;
 
-    ret = _init_memory_resource(config_file);
+    ret = init_memory_resource(config_file);
     if (ret != 0) {
         perror("Failed to init memory resource\n");
         return -1;
