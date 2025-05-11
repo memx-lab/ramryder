@@ -22,9 +22,9 @@ sudo $CPU_BIND_40 $QEMU_BIN \
     -cpu host \
     -smp 40 \
     -m 60G \
-    -object memory-backend-file,id=mem0,share=on,mem-path=/dev/dax0.0,size=20G,align=2M \
-    -object memory-backend-file,id=mem1,share=on,mem-path=/dev/dax1.0,size=20G,align=2M \
-    -object memory-backend-file,id=mem2,share=on,mem-path=/dev/dax1.0,size=20G,align=2M,offset=20G \
+    -object memory-backend-file,id=mem0,share=on,mem-path=/dev/dax2.0,size=20G,align=2M \
+    -object memory-backend-file,id=mem1,share=on,mem-path=/dev/dax3.0,size=20G,align=2M \
+    -object memory-backend-file,id=mem2,share=on,mem-path=/dev/dax3.0,size=20G,align=2M,offset=20G \
     -numa node,nodeid=0,memdev=mem0,cpus=0-39,tier-id=0,dax-id=0,seg-id=0 \
     -numa node,nodeid=1,memdev=mem1,tier-id=0,dax-id=1,seg-id=0 \
     -numa node,nodeid=2,memdev=mem2,tier-id=0,dax-id=1,seg-id=1 \
