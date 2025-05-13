@@ -30,15 +30,15 @@ sudo $CPU_BIND_40 $QEMU_BIN \
     -enable-kvm \
     -cpu host \
     -smp 40 \
-    -m 10240M,slots=256,maxmem=1024G \
-    -object memory-backend-file,id=mem0,share=on,mem-path=/dev/dax0.0,size=5G,align=128M \
-    -object memory-backend-file,id=mem1,share=on,mem-path=/dev/dax1.0,size=5G,align=128M \
+    -m 50G,slots=256,maxmem=1024G \
+    -object memory-backend-file,id=mem0,share=on,mem-path=/dev/dax0.0,size=25G,align=128M \
+    -object memory-backend-file,id=mem1,share=on,mem-path=/dev/dax1.0,size=25G,align=128M \
     -object memory-backend-file,id=mem2,share=on,mem-path=/dev/dax2.0,size=5G,align=128M \
     -object memory-backend-file,id=mem3,share=on,mem-path=/dev/dax3.0,size=5G,align=128M \
     -numa node,nodeid=0,tier-id=0,dax-id=0,seg-id=0,memdev=mem0,cpus=0-39 \
     -numa node,nodeid=1,tier-id=0,dax-id=1,seg-id=0,memdev=mem1 \
-    -numa node,nodeid=2,tier-id=1,dax-id=2,seg-id=0 \
-    -numa node,nodeid=3,tier-id=1,dax-id=3,seg-id=0 \
+    -numa node,nodeid=2,tier-id=0,dax-id=2,seg-id=0 \
+    -numa node,nodeid=3,tier-id=0,dax-id=3,seg-id=0 \
     -device virtio-scsi-pci,id=scsi0 \
     -device scsi-hd,drive=hd0 \
     -drive file=$OSIMGF,if=none,aio=native,cache=none,format=qcow2,id=hd0 \
