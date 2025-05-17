@@ -59,6 +59,8 @@ static void print_usage(void)
     fprintf(stderr, "Usage:\n");
     fprintf(stderr, "   get-mem-info vid=<vm_id>\n");
     fprintf(stderr, "   get-mem-pool\n");
+    fprintf(stderr, "   get-num-nodes\n");
+    fprintf(stderr, "   get-node-info nid=<node_id>\n");
     fprintf(stderr, "   allocate-mem tid=<tid> did=<dev id> vid=<vm id> size=<mb>\n");
     fprintf(stderr, "   release-mem tid=<tid> did=<dev id> vid=<vm id> offset=<mb> size=<mb>\n");
     fprintf(stderr, "   create-vm vid=<vm id> coreset=[20-30,50-60]\n");
@@ -91,6 +93,20 @@ int main(int argc, char *argv[])
             return -1;
         }
         snprintf(cmd_full, sizeof(cmd_full), "%s", cmd_action);
+    } else if (strcmp(cmd_action, "get-num-nodes") == 0) {
+        if (argc != 2) {
+            fprintf(stderr, "Invalid usage\n");
+            print_usage();
+            return -1;
+        }
+        snprintf(cmd_full, sizeof(cmd_full), "%s", cmd_action);
+    } else if (strcmp(cmd_action, "get-node-info") == 0) {
+        if (argc != 3) {
+            fprintf(stderr, "Invalid usage\n");
+            print_usage();
+            return -1;
+        }
+        snprintf(cmd_full, sizeof(cmd_full), "%s %s", cmd_action, argv[2]);
     } else if (strcmp(cmd_action, "allocate-mem") == 0) {
         if (argc != 6) {
             fprintf(stderr, "Invalid usage\n");

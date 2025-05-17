@@ -56,6 +56,41 @@ static char *rpc_handle_get_mem_pool(void)
     return response;
 }
 
+static char *rpc_handle_get_num_nodes(void)
+{
+    char *response = NULL;
+
+    response = malloc(BUFFER_SIZE);
+    // Number of nodes is same as number of devices since
+    // we constrct a node for each memory device
+    snprintf(response, BUFFER_SIZE, "%d", memory_pool_get_num_devs());
+
+    return response;
+}
+
+static char *rpc_handle_get_node_info(char *args)
+{
+    int ret;
+    int node_id;
+    char *response = NULL;
+    struct memory_node_info node_info;
+
+    if (sscanf(args, "nid=%d", &node_id) == 1) {
+        response = malloc(BUFFER_SIZE);
+        ret = memory_pool_get_node_info(node_id, &node_info);
+        if (ret == 0) {
+            snprintf(response, BUFFER_SIZE, "nodeid=%d,tier-id=%d,dax-id=%d",
+                node_id, node_info.tier_id, node_info.dax_id);
+        } else {
+            snprintf(response, BUFFER_SIZE, "Node %d does not exist", node_id);
+        }
+    } else {
+        response = strdup("Invalid args");
+    }
+
+    return response;
+}
+
 static char *rpc_handle_allocate_mem(char *args)
 {
     int ret;
@@ -72,10 +107,10 @@ static char *rpc_handle_allocate_mem(char *args)
     response = malloc(BUFFER_SIZE);
     ret = memory_pool_allocate_segments(tid, did, vid, size_mb, &mem_req);
     if (ret == 0) {
-        snprintf(response, BUFFER_SIZE, "mem-path=%s,size=%dM,align=2M,offset=%dM",
-            mem_req.dev_path, mem_req.size_mb, mem_req.offset_mb);
+        snprintf(response, BUFFER_SIZE, "mem-path=%s,size=%dM,align=%dM,offset=%dM",
+            mem_req.dev_path, mem_req.size_mb, mem_req.alignment, mem_req.offset_mb);
     } else {
-        snprintf(response, BUFFER_SIZE, "Allocate failed\n");
+        snprintf(response, BUFFER_SIZE, "Allocate failed");
     }
 
     return response;
@@ -97,9 +132,9 @@ static char *rpc_handle_release_mem(char *args)
     response = malloc(BUFFER_SIZE);
     ret = memory_pool_release_segments(tid, did, vid, offset_mb, size_mb);
     if (ret == 0) {
-        snprintf(response, BUFFER_SIZE, "Release success\n");
+        snprintf(response, BUFFER_SIZE, "Release success");
     } else {
-        snprintf(response, BUFFER_SIZE, "Release failed\n");
+        snprintf(response, BUFFER_SIZE, "Release failed");
     }
 
     return response;
@@ -232,6 +267,10 @@ static void rpc_server_start(void)
                     response = rpc_handle_get_mem_info(args);
                 } else if (strcmp(cmd, "get-mem-pool") == 0) {
                     response = rpc_handle_get_mem_pool();
+                } else if (strcmp(cmd, "get-num-nodes") == 0) {
+                    response = rpc_handle_get_num_nodes();
+                } else if (strcmp(cmd, "get-node-info") == 0) {
+                    response = rpc_handle_get_node_info(args);
                 } else if (strcmp(cmd, "allocate-mem") == 0) {
                     response = rpc_handle_allocate_mem(args);
                 } else if (strcmp(cmd, "release-mem") == 0) {

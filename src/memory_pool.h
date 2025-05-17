@@ -7,6 +7,12 @@ struct memory_request {
     char dev_path[DEV_PATH_LEN];
     int offset_mb;
     int size_mb;
+    int alignment;
+};
+
+struct memory_node_info {
+    int tier_id;
+    int dax_id;
 };
 
 int memory_pool_init(const char* config_file);
@@ -15,5 +21,7 @@ int memory_pool_allocate_segments(int tier_id, int dax_id, int vm_id,
                     int size_mb, struct memory_request *mem_req);
 int memory_pool_release_segments(int tier_id, int dax_id, int vm_id, 
                     int offset_mb, int size_mb);
+int memory_pool_get_num_devs(void);
+int memory_pool_get_node_info(int node_id, struct memory_node_info *node_info);
 
 #endif // MEMORY_RESOURCE_H

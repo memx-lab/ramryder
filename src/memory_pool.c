@@ -16,7 +16,16 @@ struct memory_segment {
 
 struct memory_dax_dev {
     char dev_path[DEV_PATH_LEN];
+    /*
+     * Note that this node id is not same as real node id in guest kerel.
+     *
+     * This node id is used to interact with QEMU, which will expose this
+     * as a PXM in guest kernel. Then guest kernel will translate PXM into
+     * a real node id which we finnaly see in kernel.
+     */
+    int node_id;
     int tier_id;
+    /* We use dax id to refer to a parallel unit of a memory tier. */
     int dax_id;
     int total_size_mb;
     int total_segments;
@@ -25,7 +34,7 @@ struct memory_dax_dev {
 };
 
 static struct memory_dax_dev g_mem_devs[MAX_DEVICES];
-static int g_dev_count = 0;
+static int g_num_devs = 0;
 static int g_segment_size_mb = 0;
 
 static inline bool is_aligned(int value, int alignment) {
@@ -95,7 +104,7 @@ int memory_pool_allocate_segments(int tier_id, int dax_id, int vm_id,
         return -1;
     }
 
-    for (int i = 0; i < g_dev_count; i++) {
+    for (int i = 0; i < g_num_devs; i++) {
         if (g_mem_devs[i].tier_id == tier_id && g_mem_devs[i].dax_id == dax_id) {
             mem_dev = &g_mem_devs[i];
             break;
@@ -118,9 +127,10 @@ int memory_pool_allocate_segments(int tier_id, int dax_id, int vm_id,
     snprintf(mem_req->dev_path, DEV_PATH_LEN, "%s", mem_dev->dev_path);
     mem_req->offset_mb = start_index * g_segment_size_mb;
     mem_req->size_mb = num_segments * g_segment_size_mb;
+    mem_req->alignment = g_segment_size_mb;
 
-    printf("Allocated memory, dev: %s, offset: %dMB, size: %dMB\n",
-            mem_req->dev_path, mem_req->offset_mb, mem_req->size_mb);
+    printf("Allocated memory, dev: %s, offset: %dMB, size: %dMB, alignment: %dMB\n",
+            mem_req->dev_path, mem_req->offset_mb, mem_req->size_mb, mem_req->alignment);
 
     return 0;
 }
@@ -160,7 +170,7 @@ int memory_pool_release_segments(int tier_id, int dax_id, int vm_id,
         return -1;
     }
 
-    for (int i = 0; i < g_dev_count; i++) {
+    for (int i = 0; i < g_num_devs; i++) {
         if (g_mem_devs[i].tier_id == tier_id && g_mem_devs[i].dax_id == dax_id) {
             mem_dev = &g_mem_devs[i];
             break;
@@ -218,7 +228,7 @@ static int memory_pool_load_config(const char* config_file)
                     return -1;
                 }
             } else if (strcmp(key, "dev") == 0) {
-                if (g_dev_count >= MAX_DEVICES) {
+                if (g_num_devs >= MAX_DEVICES) {
                     fprintf(stderr, "Exceeded maximum number of devices\n");
                     fclose(file);
                     return -1;
@@ -241,7 +251,7 @@ static int memory_pool_load_config(const char* config_file)
                     fprintf(stderr, "Invalid tier id: %d or dax id: %d\n",
                         mem_device.tier_id, mem_device.dax_id);
                 }
-                g_mem_devs[g_dev_count++] = mem_device;
+                g_mem_devs[g_num_devs++] = mem_device;
             }
         }
     }
@@ -259,7 +269,9 @@ static int init_memory_resource(const char* config_file)
         return -1;
     }
 
-    for (int i = 0; i < g_dev_count; i++) {
+    for (int i = 0; i < g_num_devs; i++) {
+        /* Generate an unique node id for each dax device */
+        g_mem_devs[i].node_id = i;
         g_mem_devs[i].total_segments = g_mem_devs[i].total_size_mb / g_segment_size_mb;
         g_mem_devs[i].used_segments = 0;
     }
@@ -267,21 +279,39 @@ static int init_memory_resource(const char* config_file)
     return 0;
 }
 
+int memory_pool_get_num_devs(void)
+{
+    return g_num_devs;
+}
+
+int memory_pool_get_node_info(int node_id, struct memory_node_info *node_info)
+{
+    for (int i = 0; i < g_num_devs; i++) {
+        if (g_mem_devs[i].node_id == node_id) {
+            node_info->tier_id = g_mem_devs[i].tier_id;
+            node_info->dax_id = g_mem_devs[i].dax_id;
+            return 0;
+        }
+    }
+
+    return -1;
+}
+
 void memory_pool_get_usage(char *buffer, int buffer_size)
 {
-    if (g_dev_count == 0) {
+    if (g_num_devs == 0) {
         snprintf(buffer, buffer_size, "No memory devices initialized.\n");
         return;
     }
     
-    int offset = snprintf(buffer, buffer_size, "Index | Device Path | Size (MB) | Segment (MB) | Used Seg | Total Seg | Tier ID | Dax ID\n");
+    int offset = snprintf(buffer, buffer_size, "Index | Device Path | Size (MB) | Segment (MB) | Used Seg | Total Seg | Node ID | Tier ID | Dax ID\n");
     
-    for (int i = 0; i < g_dev_count && offset < buffer_size; i++) {
+    for (int i = 0; i < g_num_devs && offset < buffer_size; i++) {
         offset += snprintf(buffer + offset, buffer_size - offset,
-                "%5d | %s | %9d | %12d | %8d | %9d | %7d | %6d\n",
+                "%5d | %s | %9d | %12d | %8d | %9d | %7d | %7d | %6d\n",
                 i, g_mem_devs[i].dev_path, g_mem_devs[i].total_size_mb, g_segment_size_mb,
                 g_mem_devs[i].used_segments, g_mem_devs[i].total_segments,
-                g_mem_devs[i].tier_id, g_mem_devs[i].dax_id);
+                g_mem_devs[i].node_id, g_mem_devs[i].tier_id, g_mem_devs[i].dax_id);
         if (offset >= buffer_size - 1) {
             break;
         }
