@@ -17,7 +17,7 @@ struct memory_segment {
 struct memory_dax_dev {
     char dev_path[DEV_PATH_LEN];
     int tier_id;
-    int dev_id;
+    int dax_id;
     int total_size_mb;
     int total_segments;
     int used_segments;
@@ -83,7 +83,7 @@ static int allocate_segments(struct memory_dax_dev *mem_dev, int num_segments, i
     return start_index;
 }
 
-int memory_pool_allocate_segments(int tier_id, int dev_id, int vm_id,
+int memory_pool_allocate_segments(int tier_id, int dax_id, int vm_id,
                     int size_mb, struct memory_request *mem_req)
 {
     struct memory_dax_dev *mem_dev = NULL;
@@ -96,15 +96,15 @@ int memory_pool_allocate_segments(int tier_id, int dev_id, int vm_id,
     }
 
     for (int i = 0; i < g_dev_count; i++) {
-        if (g_mem_devs[i].tier_id == tier_id && g_mem_devs[i].dev_id == dev_id) {
+        if (g_mem_devs[i].tier_id == tier_id && g_mem_devs[i].dax_id == dax_id) {
             mem_dev = &g_mem_devs[i];
             break;
         }
     }
 
     if (mem_dev == NULL) {
-        fprintf(stderr, "Cannot find memory device with tier id %d and dev id: %d\n",
-                tier_id, dev_id);
+        fprintf(stderr, "Cannot find memory device with tier id %d and dax id: %d\n",
+                tier_id, dax_id);
         return -1;
     }
 
@@ -147,7 +147,7 @@ static int release_segments(struct memory_dax_dev *mem_dev, int vm_id,
     return 0;
 }
 
-int memory_pool_release_segments(int tier_id, int dev_id, int vm_id, 
+int memory_pool_release_segments(int tier_id, int dax_id, int vm_id, 
                     int offset_mb, int size_mb)
 {
     int ret;
@@ -161,15 +161,15 @@ int memory_pool_release_segments(int tier_id, int dev_id, int vm_id,
     }
 
     for (int i = 0; i < g_dev_count; i++) {
-        if (g_mem_devs[i].tier_id == tier_id && g_mem_devs[i].dev_id == dev_id) {
+        if (g_mem_devs[i].tier_id == tier_id && g_mem_devs[i].dax_id == dax_id) {
             mem_dev = &g_mem_devs[i];
             break;
         }
     }
 
     if (mem_dev == NULL) {
-        fprintf(stderr, "Cannot find memory device with tier id %d and dev id: %d\n",
-                tier_id, dev_id);
+        fprintf(stderr, "Cannot find memory device with tier id %d and dax id: %d\n",
+                tier_id, dax_id);
         return -1;
     }
 
@@ -178,8 +178,8 @@ int memory_pool_release_segments(int tier_id, int dev_id, int vm_id,
 
     ret = release_segments(mem_dev, vm_id, start_index, segment_count);
     if (ret < 0) {
-        fprintf(stderr, "Failed to release all segments, tier id: %d, dev id: %d, vm id: %d, offset: %dMB, size: %dMB\n",
-        tier_id, dev_id, vm_id, offset_mb, size_mb);   
+        fprintf(stderr, "Failed to release all segments, tier id: %d, dax id: %d, vm id: %d, offset: %dMB, size: %dMB\n",
+        tier_id, dax_id, vm_id, offset_mb, size_mb);   
         return -1;
     }
 
@@ -227,7 +227,7 @@ static int memory_pool_load_config(const char* config_file)
                 if (sscanf(value1, "path=%255s", mem_device.dev_path) != 1 ||
                     sscanf(value2, "size_mb=%d", &mem_device.total_size_mb) != 1 ||
                     sscanf(value3, "tier_id=%d", &mem_device.tier_id) != 1 ||
-                    sscanf(value4, "dev_id=%d", &mem_device.dev_id) != 1) {
+                    sscanf(value4, "dax_id=%d", &mem_device.dax_id) != 1) {
                     fprintf(stderr, "Invalid device entry: %s %s %s %s\n", value1, value2, value3, value4);
                     fclose(file);
                     return -1;
@@ -237,9 +237,9 @@ static int memory_pool_load_config(const char* config_file)
                     fclose(file);
                     return -1;
                 }
-                if (mem_device.tier_id < 0 || mem_device.dev_id < 0) {
-                    fprintf(stderr, "Invalid tier id: %d or dev id: %d\n",
-                        mem_device.tier_id, mem_device.dev_id);
+                if (mem_device.tier_id < 0 || mem_device.dax_id < 0) {
+                    fprintf(stderr, "Invalid tier id: %d or dax id: %d\n",
+                        mem_device.tier_id, mem_device.dax_id);
                 }
                 g_mem_devs[g_dev_count++] = mem_device;
             }
@@ -274,14 +274,14 @@ void memory_pool_get_usage(char *buffer, int buffer_size)
         return;
     }
     
-    int offset = snprintf(buffer, buffer_size, "Index | Device Path | Size (MB) | Segment (MB) | Used Seg | Total Seg | Tier ID | Dev ID\n");
+    int offset = snprintf(buffer, buffer_size, "Index | Device Path | Size (MB) | Segment (MB) | Used Seg | Total Seg | Tier ID | Dax ID\n");
     
     for (int i = 0; i < g_dev_count && offset < buffer_size; i++) {
         offset += snprintf(buffer + offset, buffer_size - offset,
                 "%5d | %s | %9d | %12d | %8d | %9d | %7d | %6d\n",
                 i, g_mem_devs[i].dev_path, g_mem_devs[i].total_size_mb, g_segment_size_mb,
                 g_mem_devs[i].used_segments, g_mem_devs[i].total_segments,
-                g_mem_devs[i].tier_id, g_mem_devs[i].dev_id);
+                g_mem_devs[i].tier_id, g_mem_devs[i].dax_id);
         if (offset >= buffer_size - 1) {
             break;
         }

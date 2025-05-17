@@ -11,9 +11,9 @@ struct memory_request {
 
 int memory_pool_init(const char* config_file);
 void memory_pool_get_usage(char *buffer, int buffer_size);
-int memory_pool_allocate_segments(int tier_id, int dev_id, int vm_id,
+int memory_pool_allocate_segments(int tier_id, int dax_id, int vm_id,
                     int size_mb, struct memory_request *mem_req);
-int memory_pool_release_segments(int tier_id, int dev_id, int vm_id, 
+int memory_pool_release_segments(int tier_id, int dax_id, int vm_id, 
                     int offset_mb, int size_mb);
 
 #endif // MEMORY_RESOURCE_H
