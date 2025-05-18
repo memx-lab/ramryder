@@ -14,7 +14,6 @@ static void print_results(char* results)
 {
     json_object *parsed_json;
 
-    printf("Server Response:\n");
     parsed_json = json_tokener_parse(results);
     if (parsed_json) {
         printf("%s\n", json_object_to_json_string_ext(parsed_json, JSON_C_TO_STRING_PRETTY));

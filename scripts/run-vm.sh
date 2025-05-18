@@ -25,18 +25,25 @@ CPU_BIND_20='taskset -c 20-29,60-69'
 CPU_BIND_24='taskset -c 20-31,60-71'
 CPU_BIND_40='taskset -c 20-39,60-79'
 
+mem0=$(allocate_memory_object 0 0 0 $VMID 25600)
+mem1=$(allocate_memory_object 1 0 1 $VMID 25600)
+node0=$(allocate_numa_node 0)
+node1=$(allocate_numa_node 1)
+node2=$(allocate_numa_node 2)
+node3=$(allocate_numa_node 3)
+
 sudo $CPU_BIND_40 $QEMU_BIN \
     -name $NAME \
     -enable-kvm \
     -cpu host \
     -smp 40 \
-    -m 60G,slots=256,maxmem=512G \
-    -object memory-backend-file,id=mem0,share=on,mem-path=/dev/dax2.0,size=40G,align=2M \
-    -object memory-backend-file,id=mem1,share=on,mem-path=/dev/dax3.0,size=20G,align=2M \
-    -object memory-backend-file,id=mem2,share=on,mem-path=/dev/dax3.0,size=20G,align=2M,offset=20G \
-    -numa node,nodeid=0,memdev=mem0,cpus=0-39,tier-id=0,dax-id=0,seg-id=0 \
-    -numa node,nodeid=1,memdev=mem1,tier-id=0,dax-id=1,seg-id=0 \
-    -device pc-dimm,id=dimm0,memdev=mem2,node=1 \
+    -m 50G,slots=256,maxmem=1024G \
+    $mem0 \
+    $mem1 \
+    $node0,memdev=mem0,cpus=0-39 \
+    $node1,memdev=mem1 \
+    $node2 \
+    $node3 \
     -device virtio-scsi-pci,id=scsi0 \
     -device scsi-hd,drive=hd0 \
     -drive file=$OSIMGF,if=none,aio=native,cache=none,format=qcow2,id=hd0 \
@@ -49,6 +56,3 @@ sudo $CPU_BIND_40 $QEMU_BIN \
     -device virtio-serial \
     -device virtserialport,chardev=qga0,name=org.qemu.guest_agent.0 \
     2>&1 | tee log
-
-
-
