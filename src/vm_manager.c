@@ -9,6 +9,7 @@
 #include "util_common.h"
 #include "vm_manager.h"
 #include "guest_agent.h"
+#include "memory_pool.h"
 
 struct vm_instance_manager {
     int count;
@@ -240,6 +241,8 @@ int vm_mngr_instance_destroy(int vm_id)
     vm_perf_counter_teardown(VM);
 #endif
     vm_struct_reset(VM);
+    // Rlease all memroy segments allocated to this VM
+    memory_pool_release_vm_memory(VM->vm_id);
 
     g_vm_mngr.count--;
     printf("VM %d destroyed\n", vm_id);

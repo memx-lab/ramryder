@@ -23,5 +23,6 @@ int memory_pool_release_segments(int tier_id, int dax_id, int vm_id,
                     int offset_mb, int size_mb);
 int memory_pool_get_num_devs(void);
 int memory_pool_get_node_info(int node_id, struct memory_node_info *node_info);
+void memory_pool_release_vm_memory(int vm_id);
 
 #endif // MEMORY_RESOURCE_H

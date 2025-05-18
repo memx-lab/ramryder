@@ -199,6 +199,22 @@ int memory_pool_release_segments(int tier_id, int dax_id, int vm_id,
     return 0;
 }
 
+void memory_pool_release_vm_memory(int vm_id)
+{
+    struct memory_dax_dev *mem_dev = NULL;
+
+    for (int i = 0; i < g_num_devs; i++) {
+        mem_dev = &g_mem_devs[i];
+        for (int j; j < mem_dev->used_segments; j++) {
+            if (mem_dev->segments[j].allocated && mem_dev->segments[j].used_vm_id == vm_id) {
+                mem_dev->segments[j].allocated = false;
+                mem_dev->segments[j].used_vm_id = -1;
+                mem_dev->used_segments--;
+            }
+        }
+    }
+}
+
 static int memory_pool_load_config(const char* config_file)
 {
     char line[512];
