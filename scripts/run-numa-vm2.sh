@@ -5,17 +5,12 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
 # unique ID for each VM
 VMID=1
+# VM OS image
+OSIMGF=$IMGDIR/u20s.qcow2
 
 NAME=VM-NUMA-$VMID
 QMP_SOCK=$SOCK_PATH/qmp-sock-$VMID
 QGA_SOCK=$SOCK_PATH/qga-sock-$VMID
-
-# image directory
-IMGDIR=$HOME/images
-# Virtual machine disk image
-OSIMGF=$IMGDIR/u20s_$VMID.qcow2
-# qemu binary
-QEMU_BIN="$PROJECT_ROOT/qemu/build/qemu-system-x86_64"
 
 CPU_BIND_12='taskset -c 0-5,40-45'
 CPU_BIND_16='taskset -c 0-7,40-47'

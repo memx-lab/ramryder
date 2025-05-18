@@ -8,8 +8,12 @@ PROJECT_ROOT="$(cd "$COMMON_DIR/.." && pwd)"
 
 # Socket path for qemu and guest agents
 SOCK_PATH=/var/run
+# image directory
+IMGDIR=$HOME/images
 # Resource client
 RPC_CLIENT_BIN="sudo $PROJECT_ROOT/src/resource_client"
+# qemu binary
+QEMU_BIN="$PROJECT_ROOT/qemu/build/qemu-system-x86_64"
 
 # qemu related
 function allocate_memory_object() {
