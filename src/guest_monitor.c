@@ -178,7 +178,7 @@ static void get_sys_mem_bw_usage(memdata_t *md, core_metrics_t *core_metrics)
     bool output = false;
 
     perf_agent_get_metrics(md, core_metrics, output);
-#ifdef ENABLE_DEBUG_TRACE
+#ifdef ENABLE_DEBUG
     int max_sockets = 2;
     for (int skt_id = 0; skt_id < max_sockets; skt_id++) {
         printf("Socket %d, Read : %.2f MB/s, Write: %.2f MB/s\n", 
@@ -210,7 +210,7 @@ static void __get_vm_mem_bw(struct vm_instance *VM, void *arg)
     if (enable_cloud_db) {
         upload_vm_bw_to_cloud_db(VM);
     }
-#ifdef ENABLE_DEBUG_TRACE
+#ifdef ENABLE_DEBUG
     printf("VM %i Bandwidth, Local %lu MB/s, Remote %lu MB/s\n",
             VM->vm_id, VM->mem_bw_local, VM->mem_bw_remote);
 #endif
@@ -241,7 +241,7 @@ static void __get_vm_mem_cp(struct vm_instance *VM, void *arg __attribute__((unu
     }
 
     // TODO: parse memory usage and fill VM
-#ifdef ENABLE_DEBUG_TRACE
+#ifdef ENABLE_DEBUG
     printf("%s\n", status_json_response);
 #endif
     free(status_json_response);
@@ -254,7 +254,7 @@ static void *__monitor_loop(void *arg __attribute__((unused)))
     uint32_t monitor_interval_in_us = SECOND_TO_US(monitor_interval_in_second);
 
     while (running) {
-#ifdef ENABLE_DEBUG_TRACE
+#ifdef ENABLE_DEBUG
         printf("======================================================================\n");
 #endif
         /* Get whole system bandwidth including per core and channel/controller (uncore) */
