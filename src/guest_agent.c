@@ -15,7 +15,6 @@
 #include "vm_manager.h"
 
 #define QGA_SOCKET_PREFIX "/var/run/qga-sock-"
-#define MAX_SOCKET_PATH 256
 
 struct guest_agent {
     char socket_path[MAX_SOCKET_PATH];

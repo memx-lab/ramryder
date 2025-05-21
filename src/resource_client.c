@@ -60,8 +60,10 @@ static void print_usage(void)
     fprintf(stderr, "   get-mem-pool\n");
     fprintf(stderr, "   get-num-nodes\n");
     fprintf(stderr, "   get-node-info nid=<node_id>\n");
-    fprintf(stderr, "   allocate-mem tid=<tid> did=<dev id> vid=<vm id> size=<mb>\n");
-    fprintf(stderr, "   release-mem tid=<tid> did=<dev id> vid=<vm id> offset=<mb> size=<mb>\n");
+    fprintf(stderr, "   allocate-mem tid=<tid> did=<dev id> vid=<VM id> size=<mb>\n");
+    fprintf(stderr, "   release-mem tid=<tid> did=<dev id> vid=<VM id> offset=<mb> size=<mb>\n");
+    fprintf(stderr, "   hotplug-mem mid=<memory id> vid=<VM id> nid=<NUMA node id>\n");
+    fprintf(stderr, "   hotunplug-mem mid=<memory id> vid=<VM id> nid=<NUMA node id>\n");
     fprintf(stderr, "   create-vm vid=<vm id> coreset=[20-30,50-60]\n");
     fprintf(stderr, "   destroy-vm vid=<vm id>\n");
 }
@@ -122,6 +124,15 @@ int main(int argc, char *argv[])
         }
         snprintf(cmd_full, sizeof(cmd_full), "%s %s %s %s %s %s", 
                     cmd_action, argv[2], argv[3], argv[4], argv[5], argv[6]);
+    } else if (strcmp(cmd_action, "hotplug-mem") == 0) {
+        if (argc != 5) {
+            fprintf(stderr, "Invalid usage\n");
+            print_usage();
+            return -1;
+        }
+        // e.g., hotplug-mem mid=<memory id> vid=<VM id> nid=<NUMA node id>
+        snprintf(cmd_full, sizeof(cmd_full), "%s %s %s %s",
+                    cmd_action, argv[2], argv[3], argv[4]);
     } else if (strcmp(cmd_action, "create-vm") == 0) {
         if (argc != 4) {
             fprintf(stderr, "Invalid usage\n");

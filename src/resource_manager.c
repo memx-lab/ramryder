@@ -140,6 +140,42 @@ static char *rpc_handle_release_mem(char *args)
     return response;
 }
 
+static char *rpc_handle_hotplug_mem(char *args)
+{
+    int ret;
+    char *response = NULL;
+    int mid = -1, vid = -1, nid = -1;
+    struct hotplug_request request;
+
+    ret = sscanf(args, "mid=%d vid=%d nid=%d", &mid, &vid, &nid);
+    if (ret != 3 || mid < 0 || vid < 0|| nid < 0) {
+        response = strdup("Invalid args");
+        return response;
+    }
+
+    // TODO: check memory id (mid)
+    // The RPC caller needs to allocate memory to get mid before the hotplug
+    //{"execute": "object-add", "arguments": { "qom-type": "memory-backend-file", "id": "mem2", "mem-path": "/dev/dax2.0", "size": 134217728, "share": true, "align": 134217728 } }
+    //{ "execute": "device_add", "arguments": { "driver": "pc-dimm", "id": "dimm0", "memdev": "mem2", "node" : 2 } }
+    request.memdev_id = "mem2";
+    request.dimm_id = "dimm0";
+    request.mem_path = "/dev/dax2.0";
+    request.size_bytes = 134217728;
+    request.align_bytes = 134217728;
+    request.share = true;
+    request.numa_node = 2;
+
+    response = malloc(BUFFER_SIZE);
+    ret = qemu_agent_hotplug_memory(vid, &request);
+    if (ret == 0) {
+        snprintf(response, BUFFER_SIZE, "Hotplug memory success");
+    } else {
+        snprintf(response, BUFFER_SIZE, "Hotplug memory failed");
+    }
+
+    return response;
+}
+
 static char *rpc_handle_create_vm(char *args)
 {
     int ret;
@@ -275,6 +311,8 @@ static void rpc_server_start(void)
                     response = rpc_handle_allocate_mem(args);
                 } else if (strcmp(cmd, "release-mem") == 0) {
                     response = rpc_handle_release_mem(args);
+                } else if (strcmp(cmd, "hotplug-mem") == 0) {
+                    response = rpc_handle_hotplug_mem(args);
                 } else if (strcmp(cmd, "create-vm") == 0) {
                     response = rpc_handle_create_vm(args);
                 } else if (strcmp(cmd, "destroy-vm") == 0) {
