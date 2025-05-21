@@ -261,10 +261,10 @@ static void *__monitor_loop(void *arg __attribute__((unused)))
         get_sys_mem_bw_usage(&md, &core_metrics);
     
         /* Monitor memory capacity usage of each VM */
-        vm_mngr_for_each_vm(__get_vm_mem_cp, NULL);
+        vm_mngr_for_each_vm_running(__get_vm_mem_cp, NULL);
 
         /*Monitor memory bandwidth usage of each VM */
-        vm_mngr_for_each_vm(__get_vm_mem_bw, &core_metrics);
+        vm_mngr_for_each_vm_running(__get_vm_mem_bw, &core_metrics);
 
 #ifdef ENABLE_PERF
         /* Get perf event counters and calculate VM metrics based on raw counters */
@@ -272,7 +272,7 @@ static void *__monitor_loop(void *arg __attribute__((unused)))
         vm_mngr_update_metrics(monitor_interval_in_second);
 
         /* Monitor memory latency of each VM */
-        vm_mngr_for_each_vm(__get_vm_mem_latency, NULL);
+        vm_mngr_for_each_vm_running(__get_vm_mem_latency, NULL);
 #endif
 
         usleep(monitor_interval_in_us);

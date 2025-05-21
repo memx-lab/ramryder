@@ -66,6 +66,8 @@ static void print_usage(void)
     fprintf(stderr, "   hotunplug-mem mid=<memory id> vid=<VM id> nid=<NUMA node id>\n");
     fprintf(stderr, "   create-vm vid=<vm id> coreset=[20-30,50-60]\n");
     fprintf(stderr, "   destroy-vm vid=<vm id>\n");
+    fprintf(stderr, "   start-vm vid=<vm id>\n");
+    fprintf(stderr, "   stop-vm vid=<vm id>\n");
 }
 
 int main(int argc, char *argv[])
@@ -141,6 +143,20 @@ int main(int argc, char *argv[])
         }
         snprintf(cmd_full, sizeof(cmd_full), "%s %s %s", cmd_action, argv[2], argv[3]);
     } else if (strcmp(cmd_action, "destroy-vm") == 0) {
+        if (argc != 3) {
+            fprintf(stderr, "Invalid usage\n");
+            print_usage();
+            return -1;
+        }
+        snprintf(cmd_full, sizeof(cmd_full), "%s %s", cmd_action, argv[2]);
+    } else if (strcmp(cmd_action, "start-vm") == 0) {
+        if (argc != 3) {
+            fprintf(stderr, "Invalid usage\n");
+            print_usage();
+            return -1;
+        }
+        snprintf(cmd_full, sizeof(cmd_full), "%s %s", cmd_action, argv[2]);
+    } else if (strcmp(cmd_action, "stop-vm") == 0) {
         if (argc != 3) {
             fprintf(stderr, "Invalid usage\n");
             print_usage();

@@ -19,6 +19,33 @@ struct vm_instance_manager {
 
 static struct vm_instance_manager g_vm_mngr;
 
+static struct vm_instance *vm_mngr_get_instance(int vm_id)
+{
+    struct vm_instance *VM = NULL;
+
+    for (int i = 0; i < MAX_NUM_VM; i++) {
+        VM = &g_vm_mngr.VMs[i];
+        if (VM->vm_id == vm_id && VM->initialized) {
+            return VM;
+        }
+    }
+
+    return NULL;
+}
+
+int vm_mngr_get_new_memory_counter(int vm_id)
+{
+    struct vm_instance *VM = NULL;
+
+    VM = vm_mngr_get_instance(vm_id);
+    if (VM == NULL) {
+        fprintf(stderr, "Cannot find VM %d\n", vm_id);
+        return -1;
+    }
+
+    return VM->used_mem_count++;
+}
+
 void vm_mngr_for_each_vm(vm_handler_fn vm_handler, void *arg)
 {
     struct vm_instance *VM;
@@ -30,6 +57,24 @@ void vm_mngr_for_each_vm(vm_handler_fn vm_handler, void *arg)
     for (int i = 0; i < MAX_NUM_VM; i++) {
         VM = &g_vm_mngr.VMs[i];
         if (!VM->initialized) {
+            continue;
+        }
+
+        vm_handler(VM, arg);
+    }
+}
+
+void vm_mngr_for_each_vm_running(vm_handler_fn vm_handler, void *arg)
+{
+    struct vm_instance *VM;
+
+    if (g_vm_mngr.count == 0) {
+        return;
+    }
+
+    for (int i = 0; i < MAX_NUM_VM; i++) {
+        VM = &g_vm_mngr.VMs[i];
+        if (!VM->initialized || !VM->running) {
             continue;
         }
 
@@ -145,39 +190,30 @@ static void __vm_num_core_update(struct vm_instance *VM,
     VM->num_cores++;
 }
 
-static void vm_struct_reset(struct vm_instance *VM)
-{
-    memset(VM->core_set, 0, sizeof(VM->core_set));
-    VM->initialized = false;
-}
-
 static bool vm_mngr_check_exit(int vm_id)
 {
-    struct vm_instance *VM;
+    struct vm_instance *VM = NULL;
 
-    for (int i = 0; i < MAX_NUM_VM; i++) {
-        VM = &g_vm_mngr.VMs[i];
-        if (VM->vm_id == vm_id && VM->initialized) {
-            return true;
-        }
+    VM = vm_mngr_get_instance(vm_id);
+    if (VM == NULL) {
+        return false;
+    } else {
+        return true;
     }
-
-    return false;
 }
 
 int vm_mngr_instance_create(int vm_id, char *core_set)
 {
-    int ret;
     struct vm_instance *VM;
 
     if (g_vm_mngr.count >= MAX_NUM_VM) {
-        fprintf(stderr, "cannot create more VMs\n");
+        fprintf(stderr, "Cannot create more VMs\n");
         return -1;
     }
 
     // check VM existing
     if (vm_mngr_check_exit(vm_id)) {
-        fprintf(stderr, "Already initialized VM %d\n", vm_id);
+        fprintf(stderr, "Already created VM %d\n", vm_id);
         return -1;
     }
 
@@ -193,9 +229,36 @@ int vm_mngr_instance_create(int vm_id, char *core_set)
     BUG_ON(VM->initialized);
     VM->vm_id = vm_id;
     VM->num_cores = 0;
+    VM->used_mem_count = 0;
     // TODO: check core overlap with other VMs
     snprintf(VM->core_set, sizeof(VM->core_set), "%s", core_set);
     vm_mngr_for_each_core(VM, __vm_num_core_update, NULL);
+
+    VM->initialized = true;
+    g_vm_mngr.count++;
+    printf("VM %d created, core number: %d, coreset %s\n",
+            VM->vm_id, VM->num_cores, VM->core_set);
+
+    return 0;
+}
+
+int vm_mngr_instance_start(int vm_id)
+{
+    int ret;
+    struct vm_instance *VM;
+
+    VM = vm_mngr_get_instance(vm_id);
+    if (VM == NULL) {
+        fprintf(stderr, "VM %d has not been created\n", vm_id);
+        return -1;
+    }
+
+    if (VM->running) {
+        printf("VM %d is running\n", vm_id);
+        return 0;
+    }
+
+    BUG_ON(!VM->initialized);
 #ifdef ENABLE_PERF
     vm_perf_counter_setup(VM);
 #endif
@@ -205,47 +268,63 @@ int vm_mngr_instance_create(int vm_id, char *core_set)
 #ifdef ENABLE_PERF
         vm_perf_counter_teardown(VM);
 #endif
-        vm_struct_reset(VM);
         return -1;
     }
-    VM->initialized = true;
 
-    printf("VM %d created, core number: %d, coreset %s\n",
-            VM->vm_id, VM->num_cores, VM->core_set);
-
-    g_vm_mngr.count++;
+    VM->running = true;
+    printf("VM %d starts running\n", vm_id);
 
     return 0;
 }
 
 int vm_mngr_instance_destroy(int vm_id)
 {
-    bool found = false;
     struct vm_instance *VM;
 
-    for (int i = 0; i < MAX_NUM_VM; i++) {
-        VM = &g_vm_mngr.VMs[i];
-        if (VM->vm_id == vm_id && VM->initialized) {
-            found = true;
-            break;
-        }
+    VM = vm_mngr_get_instance(vm_id);
+    if (VM == NULL) {
+        fprintf(stderr, "VM %d has not been created\n", vm_id);
+        return -1;
     }
 
-    if (!found) {
-        fprintf(stderr, "cannot find VM instance: %d\n", vm_id);
+    if (VM->running) {
+        fprintf(stderr, "Cannot destroy running VM %d\n", vm_id);
         return -1;
+    }
+
+    memset(VM->core_set, 0, sizeof(VM->core_set));
+    // Rlease all memroy segments allocated to this VM
+    memory_pool_release_vm_memory(VM->vm_id);
+
+    VM->initialized = false;
+    g_vm_mngr.count--;
+    printf("VM %d destroyed\n", vm_id);
+
+    return 0;
+}
+
+int vm_mngr_instance_stop(int vm_id)
+{
+    struct vm_instance *VM;
+
+    VM = vm_mngr_get_instance(vm_id);
+    if (VM == NULL) {
+        fprintf(stderr, "VM %d has not been created\n", vm_id);
+        return -1;
+    }
+
+    if (!VM->running) {
+        printf("VM %d already stopped\n", vm_id);
+        return 0;
     }
 
     guest_agent_cleanup(VM->vm_id);
 #ifdef ENABLE_PERF
     vm_perf_counter_teardown(VM);
 #endif
-    vm_struct_reset(VM);
-    // Rlease all memroy segments allocated to this VM
-    memory_pool_release_vm_memory(VM->vm_id);
 
-    g_vm_mngr.count--;
-    printf("VM %d destroyed\n", vm_id);
+    VM->running = false;
+    printf("VM %d stopped\n", vm_id);
 
     return 0;
 }
@@ -261,7 +340,7 @@ void vm_mngr_update_perf_counters(void)
 
     for (int i = 0; i < MAX_NUM_VM; i++) {
         VM = &g_vm_mngr.VMs[i];
-        if (!VM->initialized) {
+        if (!VM->running) {
             continue;
         }
 #ifdef ENABLE_DEBUG
@@ -297,7 +376,7 @@ void vm_mngr_update_metrics(int operation_window_s __attribute__((unused)))
 
 	for (int i = 0; i < MAX_NUM_VM; i++) {
         VM = &g_vm_mngr.VMs[i];
-        if (!VM->initialized) {
+        if (!VM->running) {
             continue;
         }
 

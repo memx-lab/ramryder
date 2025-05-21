@@ -195,12 +195,10 @@ static char *rpc_handle_create_vm(char *args)
         response = strdup("Invalid command");
         return response;
     }
-
     start++;
     *end = '\0';
+
     response = malloc(BUFFER_SIZE);
-    // create VM must be called after VM boots
-    // since it will connet qemu guest agent
     ret = vm_mngr_instance_create(vid, start);
     if (ret == 0) {
         snprintf(response, BUFFER_SIZE, "Create VM %d success, coreset: %s", vid, start);
@@ -228,6 +226,50 @@ static char *rpc_handle_destroy_vm(char *args)
         snprintf(response, BUFFER_SIZE, "Destroy VM %d success", vid);
     } else {
         snprintf(response, BUFFER_SIZE, "Destroy VM %d failed", vid);
+    }
+
+    return response;
+}
+
+static char *rpc_handle_start_vm(char *args)
+{
+    int ret;
+    int vid;
+    char *response = NULL;
+
+    ret = sscanf(args, "vid=%d", &vid);
+    if (ret != 1 || vid < 0) {
+        response = strdup("Invalid args");
+        return response;
+    }
+    response = malloc(BUFFER_SIZE);
+    ret = vm_mngr_instance_start(vid);
+    if (ret == 0) {
+        snprintf(response, BUFFER_SIZE, "Start VM %d success", vid);
+    } else {
+        snprintf(response, BUFFER_SIZE, "Start VM %d failed", vid);
+    }
+
+    return response;
+}
+
+static char *rpc_handle_stop_vm(char *args)
+{
+    int ret;
+    int vid;
+    char *response = NULL;
+
+    ret = sscanf(args, "vid=%d", &vid);
+    if (ret != 1 || vid < 0) {
+        response = strdup("Invalid args");
+        return response;
+    }
+    response = malloc(BUFFER_SIZE);
+    ret = vm_mngr_instance_stop(vid);
+    if (ret == 0) {
+        snprintf(response, BUFFER_SIZE, "Stop VM %d success", vid);
+    } else {
+        snprintf(response, BUFFER_SIZE, "Stop VM %d failed", vid);
     }
 
     return response;
@@ -317,6 +359,10 @@ static void rpc_server_start(void)
                     response = rpc_handle_create_vm(args);
                 } else if (strcmp(cmd, "destroy-vm") == 0) {
                     response = rpc_handle_destroy_vm(args);
+                } else if (strcmp(cmd, "start-vm") == 0) {
+                    response = rpc_handle_start_vm(args);
+                } else if (strcmp(cmd, "stop-vm") == 0) {
+                    response = rpc_handle_stop_vm(args);
                 } else {
                     response = strdup("Invalid command");
                 }
@@ -340,13 +386,20 @@ static void __vm_destroy(struct vm_instance *VM, void *arg __attribute__((unused
     vm_mngr_instance_destroy(VM->vm_id);
 }
 
+static void __vm_stop(struct vm_instance *VM, void *arg __attribute__((unused)))
+{
+    vm_mngr_instance_stop(VM->vm_id);
+}
+
 static void handle_signal(int signum __attribute__((unused)))
 {
     printf("\nResource Manager shutting down...\n");
 
     rpc_server_stop();
     guest_monitor_server_stop();
-    // destroy all VMs in case users did not release VMs before stopping
+    // stop all running VMs before desroying
+    vm_mngr_for_each_vm_running(__vm_stop, NULL);
+    // destroy all created VMs
     vm_mngr_for_each_vm(__vm_destroy, NULL);
     exit(0);
 }
