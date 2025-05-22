@@ -5,6 +5,7 @@
 #include <assert.h>
 #include "util_common.h"
 #include "memory_pool.h"
+#include "vm_manager.h"
 
 #define MAX_DEVICES 10
 #define MAX_SEGMENTS 4096
@@ -104,6 +105,11 @@ int memory_pool_allocate_segments(int tier_id, int dax_id, int vm_id,
         return -1;
     }
 
+    if (vm_mngr_check_exit(vm_id) == false) {
+        fprintf(stderr, "VM %d has not been created\n", vm_id);
+        return -1;
+    }
+
     for (int i = 0; i < g_num_devs; i++) {
         if (g_mem_devs[i].tier_id == tier_id && g_mem_devs[i].dax_id == dax_id) {
             mem_dev = &g_mem_devs[i];
@@ -128,15 +134,17 @@ int memory_pool_allocate_segments(int tier_id, int dax_id, int vm_id,
     mem_req->offset_mb = start_index * g_segment_size_mb;
     mem_req->size_mb = num_segments * g_segment_size_mb;
     mem_req->alignment = g_segment_size_mb;
+    mem_req->memdev_idx = vm_mngr_get_new_memdev_idx(vm_id);
 
-    printf("Allocated memory, dev: %s, offset: %dMB, size: %dMB, alignment: %dMB\n",
-            mem_req->dev_path, mem_req->offset_mb, mem_req->size_mb, mem_req->alignment);
+    printf("Allocated memory, index: %d, dev: %s, offset: %dMB, size: %dMB, alignment: %dMB\n",
+            mem_req->memdev_idx, mem_req->dev_path, mem_req->offset_mb, mem_req->size_mb, mem_req->alignment);
 
     return 0;
 }
 
 static int release_segments(struct memory_dax_dev *mem_dev, int vm_id, 
-                        int start_index, int segment_count) {
+                        int start_index, int segment_count)
+{
     for (int i = 0; i < segment_count; i++) {
         int idx = start_index + i;
 
@@ -167,6 +175,11 @@ int memory_pool_release_segments(int tier_id, int dax_id, int vm_id,
     if (!is_aligned(size_mb, g_segment_size_mb) || !is_aligned(offset_mb, g_segment_size_mb)) {
         fprintf(stderr, "Invalid size %d or offset %d that should align in %dMB and be non-zero\n", 
                 size_mb, offset_mb, g_segment_size_mb);
+        return -1;
+    }
+
+    if (vm_mngr_check_exit(vm_id) == false) {
+        fprintf(stderr, "Failed to release segments as VM %d has not been created\n", vm_id);
         return -1;
     }
 
@@ -205,7 +218,7 @@ void memory_pool_release_vm_memory(int vm_id)
 
     for (int i = 0; i < g_num_devs; i++) {
         mem_dev = &g_mem_devs[i];
-        for (int j = 0; j < mem_dev->used_segments; j++) {
+        for (int j = 0; j < mem_dev->total_segments; j++) {
             if (mem_dev->segments[j].allocated && mem_dev->segments[j].used_vm_id == vm_id) {
                 mem_dev->segments[j].allocated = false;
                 mem_dev->segments[j].used_vm_id = -1;

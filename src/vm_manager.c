@@ -33,7 +33,7 @@ static struct vm_instance *vm_mngr_get_instance(int vm_id)
     return NULL;
 }
 
-int vm_mngr_get_new_memory_counter(int vm_id)
+int vm_mngr_get_new_memdev_idx(int vm_id)
 {
     struct vm_instance *VM = NULL;
 
@@ -43,7 +43,7 @@ int vm_mngr_get_new_memory_counter(int vm_id)
         return -1;
     }
 
-    return VM->used_mem_count++;
+    return VM->memdev_counter++;
 }
 
 void vm_mngr_for_each_vm(vm_handler_fn vm_handler, void *arg)
@@ -190,7 +190,7 @@ static void __vm_num_core_update(struct vm_instance *VM,
     VM->num_cores++;
 }
 
-static bool vm_mngr_check_exit(int vm_id)
+bool vm_mngr_check_exit(int vm_id)
 {
     struct vm_instance *VM = NULL;
 
@@ -229,14 +229,14 @@ int vm_mngr_instance_create(int vm_id, char *core_set)
     BUG_ON(VM->initialized);
     VM->vm_id = vm_id;
     VM->num_cores = 0;
-    VM->used_mem_count = 0;
+    VM->memdev_counter = 0;
     // TODO: check core overlap with other VMs
     snprintf(VM->core_set, sizeof(VM->core_set), "%s", core_set);
     vm_mngr_for_each_core(VM, __vm_num_core_update, NULL);
 
     VM->initialized = true;
     g_vm_mngr.count++;
-    printf("VM %d created, core number: %d, coreset %s\n",
+    printf("VM %d created, core number: %d, coreset [%s]\n",
             VM->vm_id, VM->num_cores, VM->core_set);
 
     return 0;

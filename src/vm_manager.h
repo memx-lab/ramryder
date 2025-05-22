@@ -18,7 +18,7 @@ struct vm_instance {
     int num_cores;
     char core_set[256];
     int core_index; // used by perf counter setup
-    int used_mem_count; // used by memory allocation
+    int memdev_counter; // used by memory allocation
     bool initialized;
     bool running;
 
@@ -46,10 +46,10 @@ int vm_mngr_instance_destroy(int vm_id);
 void vm_mngr_for_each_vm(vm_handler_fn vm_handler, void *arg);
 void vm_mngr_for_each_vm_running(vm_handler_fn vm_handler, void *arg);
 void  vm_mngr_for_each_core(struct vm_instance *VM, core_handler_fn core_handler, void *arg);
-int vm_mngr_get_new_memory_counter(int vm_id);
+int vm_mngr_get_new_memdev_idx(int vm_id);
 int vm_mngr_instance_start(int vm_id);
 int vm_mngr_instance_stop(int vm_id);
-
+bool vm_mngr_check_exit(int vm_id);
 
 void vm_mngr_update_perf_counters(void);
 void vm_mngr_update_metrics(int operation_window_s);

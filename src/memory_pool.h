@@ -8,6 +8,7 @@ struct memory_request {
     int offset_mb;
     int size_mb;
     int alignment;
+    int memdev_idx;
 };
 
 struct memory_node_info {

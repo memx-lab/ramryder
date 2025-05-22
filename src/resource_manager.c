@@ -107,8 +107,8 @@ static char *rpc_handle_allocate_mem(char *args)
     response = malloc(BUFFER_SIZE);
     ret = memory_pool_allocate_segments(tid, did, vid, size_mb, &mem_req);
     if (ret == 0) {
-        snprintf(response, BUFFER_SIZE, "mem-path=%s,size=%dM,align=%dM,offset=%dM",
-            mem_req.dev_path, mem_req.size_mb, mem_req.alignment, mem_req.offset_mb);
+        snprintf(response, BUFFER_SIZE, "id=mem%d,mem-path=%s,size=%dM,align=%dM,offset=%dM",
+            mem_req.memdev_idx, mem_req.dev_path, mem_req.size_mb, mem_req.alignment, mem_req.offset_mb);
     } else {
         snprintf(response, BUFFER_SIZE, "Allocate failed");
     }
@@ -201,9 +201,9 @@ static char *rpc_handle_create_vm(char *args)
     response = malloc(BUFFER_SIZE);
     ret = vm_mngr_instance_create(vid, start);
     if (ret == 0) {
-        snprintf(response, BUFFER_SIZE, "Create VM %d success, coreset: %s", vid, start);
+        snprintf(response, BUFFER_SIZE, "Create VM %d success, coreset: [%s]", vid, start);
     } else {
-        snprintf(response, BUFFER_SIZE, "Create VM %d failed, coreset: %s", vid, start);
+        snprintf(response, BUFFER_SIZE, "Create VM %d failed, coreset: [%s]", vid, start);
     }
 
     return response;
