@@ -105,11 +105,6 @@ int memory_pool_allocate_segments(int tier_id, int dax_id, int vm_id,
         return -1;
     }
 
-    if (vm_mngr_check_exit(vm_id) == false) {
-        fprintf(stderr, "VM %d has not been created\n", vm_id);
-        return -1;
-    }
-
     for (int i = 0; i < g_num_devs; i++) {
         if (g_mem_devs[i].tier_id == tier_id && g_mem_devs[i].dax_id == dax_id) {
             mem_dev = &g_mem_devs[i];
@@ -131,10 +126,11 @@ int memory_pool_allocate_segments(int tier_id, int dax_id, int vm_id,
     }
 
     snprintf(mem_req->dev_path, DEV_PATH_LEN, "%s", mem_dev->dev_path);
+    mem_req->tier_id = tier_id;
+    mem_req->dax_id = dax_id;
     mem_req->offset_mb = start_index * g_segment_size_mb;
     mem_req->size_mb = num_segments * g_segment_size_mb;
     mem_req->alignment = g_segment_size_mb;
-    mem_req->memdev_idx = vm_mngr_get_new_memdev_idx(vm_id);
 
     printf("Allocated memory, index: %d, dev: %s, offset: %dMB, size: %dMB, alignment: %dMB\n",
             mem_req->memdev_idx, mem_req->dev_path, mem_req->offset_mb, mem_req->size_mb, mem_req->alignment);
@@ -175,11 +171,6 @@ int memory_pool_release_segments(int tier_id, int dax_id, int vm_id,
     if (!is_aligned(size_mb, g_segment_size_mb) || !is_aligned(offset_mb, g_segment_size_mb)) {
         fprintf(stderr, "Invalid size %d or offset %d that should align in %dMB and be non-zero\n", 
                 size_mb, offset_mb, g_segment_size_mb);
-        return -1;
-    }
-
-    if (vm_mngr_check_exit(vm_id) == false) {
-        fprintf(stderr, "Failed to release segments as VM %d has not been created\n", vm_id);
         return -1;
     }
 

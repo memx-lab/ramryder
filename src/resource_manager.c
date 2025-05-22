@@ -96,7 +96,7 @@ static char *rpc_handle_allocate_mem(char *args)
     int ret;
     char *response = NULL;
     int tid = -1, did = -1, vid = -1, size_mb = -1;
-    struct memory_request mem_req;
+    struct vm_mem_req vm_mem_req;
 
     ret = sscanf(args, "tid=%d did=%d vid=%d size=%d", &tid, &did, &vid, &size_mb);
     if (ret != 4 || tid < 0 || did < 0|| vid < 0 || size_mb <= 0) {
@@ -105,10 +105,12 @@ static char *rpc_handle_allocate_mem(char *args)
     }
 
     response = malloc(BUFFER_SIZE);
-    ret = memory_pool_allocate_segments(tid, did, vid, size_mb, &mem_req);
+    ret = vm_mngr_instance_alloc_mem(tid, did, vid, size_mb, &vm_mem_req);
     if (ret == 0) {
+        // DON't change format here which is used by QEMU
         snprintf(response, BUFFER_SIZE, "id=mem%d,mem-path=%s,size=%dM,align=%dM,offset=%dM",
-            mem_req.memdev_idx, mem_req.dev_path, mem_req.size_mb, mem_req.alignment, mem_req.offset_mb);
+            vm_mem_req.memdev_idx, vm_mem_req.dev_path, vm_mem_req.size_mb,
+            vm_mem_req.alignment, vm_mem_req.offset_mb);
     } else {
         snprintf(response, BUFFER_SIZE, "Allocate failed");
     }
@@ -120,17 +122,16 @@ static char *rpc_handle_release_mem(char *args)
 {
     int ret;
     char *response = NULL;
-    int tid = -1, did = -1, vid = -1, offset_mb = -1, size_mb = -1;
+    int vid = -1, memid = -1;
 
-    ret = sscanf(args, "tid=%d did=%d vid=%d offset=%d size=%d",
-                    &tid, &did, &vid, &offset_mb, &size_mb);
-    if (ret != 5 || tid < 0 || did < 0|| vid < 0 || offset_mb < 0 || size_mb <= 0) {
+    ret = sscanf(args, "vid=%d memid=%d", &vid, &memid);
+    if (ret != 2 || vid < 0 || memid < 0) {
         response = strdup("Invalid args");
         return response;
     }
 
     response = malloc(BUFFER_SIZE);
-    ret = memory_pool_release_segments(tid, did, vid, offset_mb, size_mb);
+    ret = vm_mngr_instance_free_mem(vid, memid);
     if (ret == 0) {
         snprintf(response, BUFFER_SIZE, "Release success");
     } else {

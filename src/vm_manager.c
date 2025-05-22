@@ -33,7 +33,7 @@ static struct vm_instance *vm_mngr_get_instance(int vm_id)
     return NULL;
 }
 
-int vm_mngr_get_new_memdev_idx(int vm_id)
+static int vm_mngr_get_new_memdev_idx(int vm_id)
 {
     struct vm_instance *VM = NULL;
 
@@ -233,6 +233,7 @@ int vm_mngr_instance_create(int vm_id, char *core_set)
     // TODO: check core overlap with other VMs
     snprintf(VM->core_set, sizeof(VM->core_set), "%s", core_set);
     vm_mngr_for_each_core(VM, __vm_num_core_update, NULL);
+    TAILQ_INIT(&VM->allocated_reqs);
 
     VM->initialized = true;
     g_vm_mngr.count++;
@@ -325,6 +326,82 @@ int vm_mngr_instance_stop(int vm_id)
 
     VM->running = false;
     printf("VM %d stopped\n", vm_id);
+
+    return 0;
+}
+
+int vm_mngr_instance_alloc_mem(int tier_id, int dax_id, int vm_id,
+                        int size_mb, struct vm_mem_req *vm_mem_req)
+{
+    int ret;
+    struct vm_instance *VM;
+    struct memory_request *mem_req;
+
+    VM = vm_mngr_get_instance(vm_id);
+    if (VM == NULL) {
+        fprintf(stderr, "VM %d has not been created\n", vm_id);
+        return -1;
+    }
+
+    mem_req = malloc(sizeof(*mem_req));
+    if (mem_req == NULL) {
+        fprintf(stderr, "Filed to alllocate request\n");
+        return -1;
+    }
+
+    ret = memory_pool_allocate_segments(tier_id, dax_id, vm_id, size_mb, mem_req);
+    if (ret < 0) {
+        fprintf(stderr, "Filed to alllocate memory from pool, tier %d, dax %d, vm %d, size %dMB\n",
+            tier_id, dax_id, vm_id, size_mb);
+        free(mem_req);
+        return -1;
+    }
+    mem_req->memdev_idx = vm_mngr_get_new_memdev_idx(vm_id);
+
+    TAILQ_INSERT_TAIL(&VM->allocated_reqs, mem_req, link);
+    snprintf(vm_mem_req->dev_path, DEV_PATH_LEN, "%s", mem_req->dev_path);
+    vm_mem_req->offset_mb = mem_req->offset_mb;
+    vm_mem_req->size_mb = mem_req->size_mb;
+    vm_mem_req->alignment = mem_req->alignment;
+    vm_mem_req->memdev_idx = mem_req->memdev_idx;
+
+    return 0;
+}
+
+int vm_mngr_instance_free_mem(int vm_id, int memdev_idx)
+{
+    int ret;
+    struct vm_instance *VM;
+    struct memory_request *mem_req;
+    bool found = false;
+
+    VM = vm_mngr_get_instance(vm_id);
+    if (VM == NULL) {
+        fprintf(stderr, "VM %d has not been created\n", vm_id);
+        return -1;
+    }
+
+    TAILQ_FOREACH(mem_req, &VM->allocated_reqs, link) {
+        if (mem_req->memdev_idx == memdev_idx) {
+            found = true;
+        }
+    }
+
+    if (!found) {
+        fprintf(stderr, "Cannot find memdev %d\n", memdev_idx);
+        return -1;
+    }
+
+    ret = memory_pool_release_segments(mem_req->tier_id, mem_req->dax_id,
+                vm_id, mem_req->offset_mb, mem_req->size_mb);
+    if (ret < 0) {
+        fprintf(stderr, "Failed to release segments from pool, VM %d, memdev %d\n",
+            vm_id, memdev_idx);
+        return -1;
+    }
+
+    TAILQ_REMOVE(&VM->allocated_reqs, mem_req, link);
+    free(mem_req);
 
     return 0;
 }
