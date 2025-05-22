@@ -14,13 +14,26 @@
 #define ENABLE_PERF
 #define MAX_NUM_VM 16
 
+struct vm_mem_req {
+    char dev_path[DEV_PATH_LEN];
+    int offset_mb;
+    int size_mb;
+    int align_mb;
+    int memdev_idx;
+};
+
+struct memory_dev {
+    int memdev_idx;
+    struct memory_request memory_req;
+    TAILQ_ENTRY(memory_dev) link;
+};
+
 struct vm_instance {
     // basic
     int vm_id;
     int num_cores;
     char core_set[256];
     int core_index; // used by perf counter setup
-    int memdev_counter; // used by memory allocation
     bool initialized;
     bool running;
 
@@ -40,15 +53,8 @@ struct vm_instance {
     bool ewma_initialized;
 
     // memory management
-    TAILQ_HEAD(, memory_request) allocated_reqs;
-};
-
-struct vm_mem_req {
-    char dev_path[DEV_PATH_LEN];
-    int offset_mb;
-    int size_mb;
-    int alignment;
-    int memdev_idx;
+    int memdev_counter;
+    TAILQ_HEAD(, memory_dev) attached_devs;
 };
 
 typedef void (*vm_handler_fn)(struct vm_instance *VM, void *arg);
@@ -66,6 +72,7 @@ bool vm_mngr_check_exit(int vm_id);
 int vm_mngr_instance_alloc_mem(int tier_id, int dax_id, int vm_id,
                         int size_mb, struct vm_mem_req *vm_mem_req);
 int vm_mngr_instance_free_mem(int vm_id, int memdev_idx);
+struct memory_request *vm_mngr_instance_get_mem(int vm_id, int memdev_idx);
 
 // VM monitor
 void vm_mngr_update_perf_counters(void);

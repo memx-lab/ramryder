@@ -10,10 +10,7 @@ struct memory_request {
     char dev_path[DEV_PATH_LEN];
     int offset_mb;
     int size_mb;
-    int alignment;
-    int memdev_idx;
-
-    TAILQ_ENTRY(memory_request) link;
+    int align_mb;
 };
 
 struct memory_node_info {

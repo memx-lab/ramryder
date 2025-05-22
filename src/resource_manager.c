@@ -13,6 +13,7 @@
 #include "guest_agent.h"
 #include "guest_monitor.h"
 #include "vm_manager.h"
+#include "util_common.h"
 
 #define CONFIG_FILE "elasticmm.conf"
 #define SERVER_SOCKET "/var/run/resource_manager.sock"
@@ -110,7 +111,7 @@ static char *rpc_handle_allocate_mem(char *args)
         // DON't change format here which is used by QEMU
         snprintf(response, BUFFER_SIZE, "id=mem%d,mem-path=%s,size=%dM,align=%dM,offset=%dM",
             vm_mem_req.memdev_idx, vm_mem_req.dev_path, vm_mem_req.size_mb,
-            vm_mem_req.alignment, vm_mem_req.offset_mb);
+            vm_mem_req.align_mb, vm_mem_req.offset_mb);
     } else {
         snprintf(response, BUFFER_SIZE, "Allocate failed");
     }
@@ -141,33 +142,37 @@ static char *rpc_handle_release_mem(char *args)
     return response;
 }
 
-static char *rpc_handle_hotplug_mem(char *args)
+static char *rpc_handle_attach_mem(char *args)
 {
     int ret;
     char *response = NULL;
-    int mid = -1, vid = -1, nid = -1;
-    struct hotplug_request request;
+    int memid = -1, vid = -1, nid = -1;
+    struct memory_request *mem_req;
+    struct hotplug_request hotplug_req;
 
-    ret = sscanf(args, "mid=%d vid=%d nid=%d", &mid, &vid, &nid);
-    if (ret != 3 || mid < 0 || vid < 0|| nid < 0) {
+    ret = sscanf(args, "memid=%d vid=%d nid=%d", &memid, &vid, &nid);
+    if (ret != 3 || memid < 0 || vid < 0) {
         response = strdup("Invalid args");
         return response;
     }
 
-    // TODO: check memory id (mid)
-    // The RPC caller needs to allocate memory to get mid before the hotplug
-    //{"execute": "object-add", "arguments": { "qom-type": "memory-backend-file", "id": "mem2", "mem-path": "/dev/dax2.0", "size": 134217728, "share": true, "align": 134217728 } }
-    //{ "execute": "device_add", "arguments": { "driver": "pc-dimm", "id": "dimm0", "memdev": "mem2", "node" : 2 } }
-    request.memdev_id = "mem2";
-    request.dimm_id = "dimm0";
-    request.mem_path = "/dev/dax2.0";
-    request.size_bytes = 134217728;
-    request.align_bytes = 134217728;
-    request.share = true;
-    request.numa_node = 2;
+    mem_req = vm_mngr_instance_get_mem(vid, memid);
+    if (mem_req == NULL) {
+         snprintf(response, BUFFER_SIZE, "Find not find memory %d\n", memid);
+         return response;
+    }
+
+    snprintf(hotplug_req.memdev_id, STRING_ID_LEN, "mem%d", memid);
+    // use memid to construct dimm id as memid is an unique number
+    snprintf(hotplug_req.dimm_id, STRING_ID_LEN, "dimm%d", memid);
+    snprintf(hotplug_req.dev_path, DEV_PATH_LEN, "%s", mem_req->dev_path);
+    hotplug_req.size_bytes = MB_TO_BYTES(mem_req->size_mb);
+    hotplug_req.align_bytes = MB_TO_BYTES(mem_req->align_mb);
+    hotplug_req.share = true; // always true currently
+    hotplug_req.numa_node = nid < 0 ? 0 : nid; // TODO: find optimal node
 
     response = malloc(BUFFER_SIZE);
-    ret = qemu_agent_hotplug_memory(vid, &request);
+    ret = qemu_agent_hotplug_memory(vid, &hotplug_req);
     if (ret == 0) {
         snprintf(response, BUFFER_SIZE, "Hotplug memory success");
     } else {
@@ -354,8 +359,8 @@ static void rpc_server_start(void)
                     response = rpc_handle_allocate_mem(args);
                 } else if (strcmp(cmd, "release-mem") == 0) {
                     response = rpc_handle_release_mem(args);
-                } else if (strcmp(cmd, "hotplug-mem") == 0) {
-                    response = rpc_handle_hotplug_mem(args);
+                } else if (strcmp(cmd, "attach-mem") == 0) {
+                    response = rpc_handle_attach_mem(args);
                 } else if (strcmp(cmd, "create-vm") == 0) {
                     response = rpc_handle_create_vm(args);
                 } else if (strcmp(cmd, "destroy-vm") == 0) {

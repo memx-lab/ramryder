@@ -2,6 +2,7 @@
 #define UTIL_COMMON_H
 #include <unistd.h>
 #include <signal.h>
+#include <stddef.h>
 
 #if defined(__GNUC__) || defined(__clang__)
 	#define likely(x)   __builtin_expect(!!(x), 1)
@@ -29,6 +30,11 @@
 #define US_PER_SECOND 1000000
 #define SECOND_TO_US(x) ((x) * (US_PER_SECOND))
 #define US_TO_SECOND(x) ((x) / (US_PER_SECOND))
+
+#define BYTES_PER_KB 1024UL
+#define BYTES_PER_MB (1024UL * 1024UL)
+#define MB_TO_BYTES(x) ((size_t)(x) * (size_t)(BYTES_PER_MB))
+#define KB_TO_BYTES(x) ((size_t)(x) * (size_t)(BYTES_PER_KB))
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))

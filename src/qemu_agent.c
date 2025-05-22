@@ -149,7 +149,7 @@ static int qemu_agent_create_object(int vm_id, struct hotplug_request *request)
     obj_add_args = json_object_new_object();
     json_object_object_add(obj_add_args, "qom-type", json_object_new_string("memory-backend-file"));
     json_object_object_add(obj_add_args, "id", json_object_new_string(request->memdev_id));
-    json_object_object_add(obj_add_args, "mem-path", json_object_new_string(request->mem_path));
+    json_object_object_add(obj_add_args, "mem-path", json_object_new_string(request->dev_path));
     json_object_object_add(obj_add_args, "size", json_object_new_int64(request->size_bytes));
     json_object_object_add(obj_add_args, "share", json_object_new_boolean(request->share));
     json_object_object_add(obj_add_args, "align", json_object_new_int64(request->align_bytes));

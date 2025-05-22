@@ -130,10 +130,10 @@ int memory_pool_allocate_segments(int tier_id, int dax_id, int vm_id,
     mem_req->dax_id = dax_id;
     mem_req->offset_mb = start_index * g_segment_size_mb;
     mem_req->size_mb = num_segments * g_segment_size_mb;
-    mem_req->alignment = g_segment_size_mb;
+    mem_req->align_mb = g_segment_size_mb;
 
-    printf("Allocated memory, index: %d, dev: %s, offset: %dMB, size: %dMB, alignment: %dMB\n",
-            mem_req->memdev_idx, mem_req->dev_path, mem_req->offset_mb, mem_req->size_mb, mem_req->alignment);
+    printf("Allocated memory for VM %d, dev: %s, offset: %dMB, size: %dMB, alignment: %dMB\n",
+            vm_id, mem_req->dev_path, mem_req->offset_mb, mem_req->size_mb, mem_req->align_mb);
 
     return 0;
 }
