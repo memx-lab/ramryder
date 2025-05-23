@@ -388,6 +388,7 @@ int vm_mngr_instance_free_mem(int vm_id, int memdev_idx)
     TAILQ_FOREACH(mem_dev, &VM->attached_devs, link) {
         if (mem_dev->memdev_idx == memdev_idx) {
             found = true;
+            break;
         }
     }
 
@@ -428,6 +429,7 @@ struct memory_request *vm_mngr_instance_get_mem(int vm_id, int memdev_idx)
     TAILQ_FOREACH(mem_dev, &VM->attached_devs, link) {
         if (mem_dev->memdev_idx == memdev_idx) {
             found = true;
+            break;
         }
     }
 
