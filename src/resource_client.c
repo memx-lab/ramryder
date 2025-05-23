@@ -60,8 +60,8 @@ static void print_usage(void)
     fprintf(stderr, "   get-mem-pool\n");
     fprintf(stderr, "   get-num-nodes\n");
     fprintf(stderr, "   get-node-info nid=<node_id>\n");
-    fprintf(stderr, "   allocate-mem tid=<tid> did=<dev id> vid=<VM id> size=<mb>\n");
-    fprintf(stderr, "   release-mem vid=<VM id> memid=<memdev id>\n");
+    fprintf(stderr, "   alloc-mem tid=<tid> did=<dev id> vid=<VM id> size=<mb>\n");
+    fprintf(stderr, "   free-mem vid=<VM id> memid=<memdev id>\n");
     fprintf(stderr, "   attach-mem memid=<memory id> vid=<VM id> nid=<NUMA node id>\n");
     fprintf(stderr, "       nid: automatically find best node if -1\n");
     fprintf(stderr, "   unattach-mem memid=<memory id> vid=<VM id> nid=<NUMA node id>\n");
@@ -111,7 +111,7 @@ int main(int argc, char *argv[])
             return -1;
         }
         snprintf(cmd_full, sizeof(cmd_full), "%s %s", cmd_action, argv[2]);
-    } else if (strcmp(cmd_action, "allocate-mem") == 0) {
+    } else if (strcmp(cmd_action, "alloc-mem") == 0) {
         if (argc != 6) {
             fprintf(stderr, "Invalid usage\n");
             print_usage();
@@ -119,7 +119,7 @@ int main(int argc, char *argv[])
         }
         snprintf(cmd_full, sizeof(cmd_full), "%s %s %s %s %s",
                     cmd_action, argv[2], argv[3], argv[4], argv[5]);
-    } else if (strcmp(cmd_action, "release-mem") == 0) {
+    } else if (strcmp(cmd_action, "free-mem") == 0) {
         if (argc != 4) {
             fprintf(stderr, "Invalid usage\n");
             print_usage();

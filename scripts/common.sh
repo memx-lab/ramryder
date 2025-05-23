@@ -27,8 +27,8 @@ function allocate_memory_object() {
     local tier_id=$1 dax_id=$2 vm_id=$3 size_mb=$4
     local response
 
-    # format: resouece_client allocate-mem tid=<tid> did=<dev id> vid=<VM id> size=<mb>
-    response="$($RPC_CLIENT_BIN allocate-mem tid=$tier_id did=$dax_id vid=$vm_id size=$size_mb)"
+    # format: resouece_client alloc-mem tid=<tid> did=<dev id> vid=<VM id> size=<mb>
+    response="$($RPC_CLIENT_BIN alloc-mem tid=$tier_id did=$dax_id vid=$vm_id size=$size_mb)"
     echo "-object memory-backend-file,share=on,$response"
 }
 

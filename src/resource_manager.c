@@ -92,7 +92,7 @@ static char *rpc_handle_get_node_info(char *args)
     return response;
 }
 
-static char *rpc_handle_allocate_mem(char *args)
+static char *rpc_handle_alloc_mem(char *args)
 {
     int ret;
     char *response = NULL;
@@ -119,7 +119,7 @@ static char *rpc_handle_allocate_mem(char *args)
     return response;
 }
 
-static char *rpc_handle_release_mem(char *args)
+static char *rpc_handle_free_mem(char *args)
 {
     int ret;
     char *response = NULL;
@@ -355,10 +355,10 @@ static void rpc_server_start(void)
                     response = rpc_handle_get_num_nodes();
                 } else if (strcmp(cmd, "get-node-info") == 0) {
                     response = rpc_handle_get_node_info(args);
-                } else if (strcmp(cmd, "allocate-mem") == 0) {
-                    response = rpc_handle_allocate_mem(args);
-                } else if (strcmp(cmd, "release-mem") == 0) {
-                    response = rpc_handle_release_mem(args);
+                } else if (strcmp(cmd, "alloc-mem") == 0) {
+                    response = rpc_handle_alloc_mem(args);
+                } else if (strcmp(cmd, "free-mem") == 0) {
+                    response = rpc_handle_free_mem(args);
                 } else if (strcmp(cmd, "attach-mem") == 0) {
                     response = rpc_handle_attach_mem(args);
                 } else if (strcmp(cmd, "create-vm") == 0) {
