@@ -120,6 +120,7 @@ static int send_qemu_cmd(int vm_id, const char *command, char *response)
         fprintf(stderr, "Failed to receive, command: %s, agentfd: %d\n", command, agent_fd);
         goto fail;
     }
+    response[ret] = '\0';
 
     ret = close_sockect(agent_fd);
     if (ret < 0) {
