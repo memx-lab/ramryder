@@ -28,6 +28,8 @@ CPU_SET="$CPU_SET_40"
 create_vm_instance $VMID $CPU_SET
 mem0=$(allocate_memory_object 0 0 $VMID 25600)
 mem1=$(allocate_memory_object 0 1 $VMID 25600)
+mem2=$(allocate_memory_object 1 0 $VMID 25600)
+mem3=$(allocate_memory_object 1 1 $VMID 25600)
 node0=$(allocate_numa_node 0)
 node1=$(allocate_numa_node 1)
 node2=$(allocate_numa_node 2)
@@ -43,13 +45,15 @@ sudo taskset -c $CPU_SET $QEMU_BIN \
     -enable-kvm \
     -cpu host \
     -smp 40 \
-    -m 50G,slots=256,maxmem=1024G \
+    -m 100G,slots=256,maxmem=1024G \
     $mem0 \
     $mem1 \
+    $mem2 \
+    $mem3 \
     $node0,memdev=mem0,cpus=0-39 \
     $node1,memdev=mem1 \
-    $node2 \
-    $node3 \
+    $node2,memdev=mem2 \
+    $node3,memdev=mem3 \
     -device virtio-scsi-pci,id=scsi0 \
     -device scsi-hd,drive=hd0 \
     -drive file=$OSIMGF,if=none,aio=native,cache=none,format=qcow2,id=hd0 \
