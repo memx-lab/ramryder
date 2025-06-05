@@ -178,7 +178,8 @@ static void get_sys_mem_bw_usage(memdata_t *md, core_metrics_t *core_metrics)
     bool output = false;
 
     perf_agent_get_metrics(md, core_metrics, output);
-#ifdef ENABLE_DEBUG
+
+#if 0
     int max_sockets = 2;
     for (int skt_id = 0; skt_id < max_sockets; skt_id++) {
         printf("Socket %d, Read : %.2f MB/s, Write: %.2f MB/s\n", 
@@ -206,13 +207,15 @@ static void __get_vm_mem_bw(struct vm_instance *VM, void *arg)
     // PCM are not real bandwidth.
     VM->mem_bw_local = VM->mem_bw_local / monitor_interval_in_second;
     VM->mem_bw_remote = VM->mem_bw_remote / monitor_interval_in_second;
+    VM->mem_bw = VM->mem_bw_local + VM->mem_bw_remote;
 
     if (enable_cloud_db) {
         upload_vm_bw_to_cloud_db(VM);
     }
 #ifdef ENABLE_DEBUG
-    printf("VM %i Bandwidth, Local %lu MB/s, Remote %lu MB/s\n",
-            VM->vm_id, VM->mem_bw_local, VM->mem_bw_remote);
+    printf("VM %i Bandwidth %lu GB/s, Local %lu GB/s, Remote %lu GB/s\n",
+            VM->vm_id, MB_TO_GB(VM->mem_bw), MB_TO_GB(VM->mem_bw_local),
+            MB_TO_GB(VM->mem_bw_remote));
 #endif
 }
 

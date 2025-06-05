@@ -40,6 +40,7 @@ struct vm_instance {
     // monitor related
     uint64_t mem_bw_local;
     uint64_t mem_bw_remote;
+    uint64_t mem_bw;
     double mem_bw_util;
     uint64_t mem_cp;
     double mem_cp_util;

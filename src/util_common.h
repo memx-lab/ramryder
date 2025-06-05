@@ -33,8 +33,13 @@
 
 #define BYTES_PER_KB 1024UL
 #define BYTES_PER_MB (1024UL * 1024UL)
-#define MB_TO_BYTES(x) ((size_t)(x) * (size_t)(BYTES_PER_MB))
+#define BYTES_PER_GB (1024UL * 1024UL * 1024UL)
 #define KB_TO_BYTES(x) ((size_t)(x) * (size_t)(BYTES_PER_KB))
+#define MB_TO_BYTES(x) ((size_t)(x) * (size_t)(BYTES_PER_MB))
+#define GB_TO_BYTES(x) ((size_t)(x) * (size_t)(BYTES_PER_GB))
+
+#define MBYTES_PER_GB 1024UL
+#define MB_TO_GB(x) ((size_t)(x) / (size_t)(MBYTES_PER_GB))
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
