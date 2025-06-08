@@ -319,12 +319,17 @@ int vm_mngr_instance_stop(int vm_id)
         return 0;
     }
 
+    // we must change running flag and sleep here to
+    // make sure guest monitor finishes the current
+    // iteration before closing perf couter fds.
+    VM->running = false;
+    usleep(US_PER_MS);
+
     guest_agent_cleanup(VM->vm_id);
 #ifdef ENABLE_PERF
     vm_perf_counter_teardown(VM);
 #endif
 
-    VM->running = false;
     printf("VM %d stopped\n", vm_id);
 
     return 0;
