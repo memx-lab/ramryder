@@ -178,9 +178,13 @@ static void upload_vm_latency_to_cloud_db(struct vm_instance *VM)
 {
     char influx_data[INFLUXDB_DATA_LENGTH];
 
+    // We use little's law to estimate latency. However, if there is no workload,
+    // the estimated latency looks not resonable. Hence, we filter unresonable latency
+    // by checking whether bandwidth is less then 200 MB/s.
+    // TODO: find a better way to filter unresonable latency.
     snprintf(influx_data, sizeof(influx_data),
-             "vm_latency,vm_id=%d l3_miss_latency=%f",
-             VM->vm_id, VM->cur_metrics[METRIC_TYPE_LOAD_L3_MISS_LAT]);
+             "vm_latency,vm_id=%d l3_miss_latency=%f", VM->vm_id, 
+             VM->mem_bw < 200 ? 0 : VM->cur_metrics[METRIC_TYPE_LOAD_L3_MISS_LAT]);
 
     cloud_db_client_send(influx_data);
 }
@@ -191,11 +195,12 @@ static void get_sys_mem_bw_usage(memdata_t *md, core_metrics_t *core_metrics)
 
     perf_agent_get_metrics(md, core_metrics, output);
 
-#if 0
+#if ENABLE_DEBUG
     int max_sockets = 2;
     for (int skt_id = 0; skt_id < max_sockets; skt_id++) {
-        printf("Socket %d, Read : %.2f MB/s, Write: %.2f MB/s\n", 
-            skt_id, md->iMC_Rd_socket[skt_id], md->iMC_Wr_socket[skt_id]);
+        printf("Socket %d, Total: %lu GB/s, Read: %lu GB/s, Write: %lu GB/s\n", 
+            skt_id, MB_TO_GB(md->iMC_Rd_socket[skt_id] + md->iMC_Wr_socket[skt_id]),
+            MB_TO_GB(md->iMC_Rd_socket[skt_id]), MB_TO_GB(md->iMC_Wr_socket[skt_id]));
     }
 #endif
 }
