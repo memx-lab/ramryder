@@ -59,6 +59,8 @@ static int guest_monitor_load_config(const char* config_file)
                 use_proxy = (strcmp(value1, "true") == 0 || strcmp(value1, "1") == 0);
             } else if (strcmp(key, "proxy_addr") == 0) {
                 proxy_addr = strdup(value1);
+            } else if (strcmp(key, "monitor_interval_second") == 0) {
+                monitor_interval_in_second = atoi(value1);
             }
         }
     }
