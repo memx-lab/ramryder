@@ -23,6 +23,8 @@ static uint32_t monitor_interval_in_second = 1;
 static bool enable_cloud_db = false;
 static char *influxdb_url = NULL;
 static char *influxdb_token = NULL;
+static bool use_proxy = false;
+static char *proxy_addr = NULL;
 static CURL *g_curl = NULL;
 struct curl_slist *g_headers = NULL;
 
@@ -53,13 +55,18 @@ static int guest_monitor_load_config(const char* config_file)
                 influxdb_url = strdup(value1);
             } else if (strcmp(key, "influxdb_token") == 0) {
                 influxdb_token = strdup(value1);
+            } else if (strcmp(key, "use_proxy") == 0) {
+                use_proxy = (strcmp(value1, "true") == 0 || strcmp(value1, "1") == 0);
+            } else if (strcmp(key, "proxy_addr") == 0) {
+                proxy_addr = strdup(value1);
             }
         }
     }
 #ifdef ENABLE_DEBUG
-    printf("Cloud DB %s, url: %s, size: %lu, token: %s, size: %lu\n",
+    printf("Cloud DB %s, url: %s, size: %lu, token: %s, size: %lu, proxy: %s\n",
             enable_cloud_db? "enabled" : "disabled",
-            influxdb_url, strlen(influxdb_url), influxdb_token, strlen(influxdb_token));
+            influxdb_url, strlen(influxdb_url), influxdb_token, strlen(influxdb_token),
+            use_proxy? proxy_addr : "No");
 #endif
     fclose(file);
     return 0;
@@ -81,6 +88,9 @@ static int cloud_db_client_init(void)
 
     curl_easy_setopt(g_curl, CURLOPT_URL, influxdb_url);
     curl_easy_setopt(g_curl, CURLOPT_HTTPHEADER, g_headers);
+    if (use_proxy) {
+        curl_easy_setopt(g_curl, CURLOPT_PROXY, proxy_addr);
+    }
 
     return 0;
 }
