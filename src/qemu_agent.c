@@ -364,7 +364,7 @@ int qemu_agent_hotunplug_memory(int vm_id, struct hotunplug_request *request)
     }
 
     /* Step 2: wait QEMU clear the device before deteling the object */
-    usleep(US_PER_SECOND);
+    usleep(3 * US_PER_SECOND);
 
     // Step 3: detele memory object
     ret = qemu_agent_free_object(vm_id, request);
