@@ -156,6 +156,7 @@ static char *rpc_handle_attach_mem(char *args)
         return response;
     }
 
+    response = malloc(BUFFER_SIZE);
     mem_req = vm_mngr_instance_get_mem(vid, memid);
     if (mem_req == NULL) {
          snprintf(response, BUFFER_SIZE, "Find not find memory %d\n", memid);
@@ -171,7 +172,6 @@ static char *rpc_handle_attach_mem(char *args)
     hotplug_req.share = true; // always true currently
     hotplug_req.numa_node = nid < 0 ? 0 : nid; // TODO: find optimal node
 
-    response = malloc(BUFFER_SIZE);
     ret = qemu_agent_hotplug_memory(vid, &hotplug_req);
     if (ret == 0) {
         snprintf(response, BUFFER_SIZE, "Hotplug memory success");
