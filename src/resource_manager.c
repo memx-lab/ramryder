@@ -182,6 +182,41 @@ static char *rpc_handle_attach_mem(char *args)
     return response;
 }
 
+static char *rpc_handle_detach_mem(char *args)
+{
+    int ret;
+    char *response = NULL;
+    int memid = -1, vid = -1;
+    struct memory_request *mem_req;
+    struct hotunplug_request hotunplug_req;
+
+    ret = sscanf(args, "memid=%d vid=%d", &memid, &vid);
+    if (ret != 2 || memid < 0 || vid < 0) {
+        response = strdup("Invalid args");
+        return response;
+    }
+
+    response = malloc(BUFFER_SIZE);
+    mem_req = vm_mngr_instance_get_mem(vid, memid);
+    if (mem_req == NULL) {
+         snprintf(response, BUFFER_SIZE, "Find not find memory %d\n", memid);
+         return response;
+    }
+
+    // use memid to construct dimm id as memid is an unique number
+    snprintf(hotunplug_req.memdev_id, STRING_ID_LEN, "mem%d", memid);
+    snprintf(hotunplug_req.dimm_id, STRING_ID_LEN, "dimm%d", memid);
+
+    ret = qemu_agent_hotunplug_memory(vid, &hotunplug_req);
+    if (ret == 0) {
+        snprintf(response, BUFFER_SIZE, "Hotunplug memory success");
+    } else {
+        snprintf(response, BUFFER_SIZE, "Hotunplug memory failed");
+    }
+
+    return response;
+}
+
 static char *rpc_handle_create_vm(char *args)
 {
     int ret;
@@ -361,6 +396,8 @@ static void rpc_server_start(void)
                     response = rpc_handle_free_mem(args);
                 } else if (strcmp(cmd, "attach-mem") == 0) {
                     response = rpc_handle_attach_mem(args);
+                } else if (strcmp(cmd, "detach-mem") == 0) {
+                    response = rpc_handle_detach_mem(args);
                 } else if (strcmp(cmd, "create-vm") == 0) {
                     response = rpc_handle_create_vm(args);
                 } else if (strcmp(cmd, "destroy-vm") == 0) {

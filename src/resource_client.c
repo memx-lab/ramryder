@@ -63,8 +63,7 @@ static void print_usage(void)
     fprintf(stderr, "   alloc-mem tid=<tid> did=<dev id> vid=<VM id> size=<mb>\n");
     fprintf(stderr, "   free-mem vid=<VM id> memid=<memdev id>\n");
     fprintf(stderr, "   attach-mem memid=<memory id> vid=<VM id> nid=<NUMA node id>\n");
-    fprintf(stderr, "       nid: automatically find best node if -1\n");
-    fprintf(stderr, "   unattach-mem memid=<memory id> vid=<VM id> nid=<NUMA node id>\n");
+    fprintf(stderr, "   detach-mem memid=<memory id> vid=<VM id>\n");
     fprintf(stderr, "   create-vm vid=<vm id> coreset=[20-30,50-60]\n");
     fprintf(stderr, "   destroy-vm vid=<vm id>\n");
     fprintf(stderr, "   start-vm vid=<vm id>\n");
@@ -136,6 +135,15 @@ int main(int argc, char *argv[])
         // e.g., attach-mem mid=<memory id> vid=<VM id> nid=<NUMA node id>
         snprintf(cmd_full, sizeof(cmd_full), "%s %s %s %s",
                     cmd_action, argv[2], argv[3], argv[4]);
+    } else if (strcmp(cmd_action, "detach-mem") == 0) {
+        if (argc != 4) {
+            fprintf(stderr, "Invalid usage\n");
+            print_usage();
+            return -1;
+        }
+        // e.g., detach-mem memid=<memory id> vid=<VM id>
+        snprintf(cmd_full, sizeof(cmd_full), "%s %s %s",
+                    cmd_action, argv[2], argv[3]);
     } else if (strcmp(cmd_action, "create-vm") == 0) {
         if (argc != 4) {
             fprintf(stderr, "Invalid usage\n");

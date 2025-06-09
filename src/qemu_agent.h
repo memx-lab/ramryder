@@ -15,6 +15,12 @@ struct hotplug_request {
     int numa_node;                  // e.g., 2; if < 0, automatically find best one
 };
 
+struct hotunplug_request {
+    char dimm_id[STRING_ID_LEN];    // e.g., "dimm1"
+    char memdev_id[STRING_ID_LEN];  // e.g., "mem1"
+};
+
 int qemu_agent_hotplug_memory(int vm_id, struct hotplug_request *request);
+int qemu_agent_hotunplug_memory(int vm_id, struct hotunplug_request *request);
 
 #endif // QEMU_AGENT_H

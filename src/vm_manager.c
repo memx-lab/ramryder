@@ -422,8 +422,7 @@ struct memory_request *vm_mngr_instance_get_mem(int vm_id, int memdev_idx)
 {
     struct vm_instance *VM;
     struct memory_dev *mem_dev;
-    struct memory_request *mem_req;
-    bool found = false;
+    struct memory_request *mem_req = NULL;
 
     VM = vm_mngr_get_instance(vm_id);
     if (VM == NULL) {
@@ -433,17 +432,15 @@ struct memory_request *vm_mngr_instance_get_mem(int vm_id, int memdev_idx)
 
     TAILQ_FOREACH(mem_dev, &VM->attached_devs, link) {
         if (mem_dev->memdev_idx == memdev_idx) {
-            found = true;
+            mem_req = &mem_dev->memory_req;
             break;
         }
     }
 
-    if (!found) {
+    if (!mem_req) {
         fprintf(stderr, "Cannot find memdev %d\n", memdev_idx);
         return NULL;
     }
-
-    mem_req = &mem_dev->memory_req;
 
     return mem_req;
 }

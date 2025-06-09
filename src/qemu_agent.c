@@ -11,6 +11,7 @@
 #include <json-c/json.h>
 #include "qemu_agent.h"
 #include "util_socket.h"
+#include "util_common.h"
 
 #define QMP_SOCKET_PREFIX "/var/run/qmp-sock-"
 
@@ -166,7 +167,36 @@ static int qemu_agent_create_object(int vm_id, struct hotplug_request *request)
         return -1;
     }
     // TODO: check whether response is valid
+    // Note: releasing root json object will release all objects automatically
     json_object_put(obj_add_cmd);
+
+    return 0;
+}
+
+static int qemu_agent_free_object(int vm_id, struct hotunplug_request *request)
+{
+    int ret;
+    json_object *obj_free_cmd, *obj_free_args;
+    const char *obj_free_str;
+    char response[BUFFER_SIZE];
+
+    // e.g., { "execute": "object_del", "arguments": { "id": "mem2" } }
+    obj_free_args = json_object_new_object();
+    json_object_object_add(obj_free_args, "id", json_object_new_string(request->memdev_id));
+
+    obj_free_cmd = json_object_new_object();
+    json_object_object_add(obj_free_cmd, "execute", json_object_new_string("object-del"));
+    json_object_object_add(obj_free_cmd, "arguments", obj_free_args);
+
+    obj_free_str = json_object_to_json_string(obj_free_cmd);
+    ret = send_qemu_cmd(vm_id, obj_free_str, response);
+    if (ret < 0) {
+        fprintf(stderr, "Failed to create object: %s\n", obj_free_str);
+        return -1;
+    }
+    // TODO: check whether response is valid
+    // Note: releasing root json object will release all objects automatically
+    json_object_put(obj_free_cmd);
 
     return 0;
 }
@@ -196,7 +226,37 @@ static int qemu_agent_add_device(int vm_id, struct hotplug_request *request)
         return -1;
     }
     // TODO: check whether response is valid
+    // Note: releasing root json object will release all objects automatically
     json_object_put(dev_add_cmd);
+
+    return 0;
+}
+
+static int qemu_agent_del_device(int vm_id, struct hotunplug_request *request)
+{
+    int ret;
+    json_object *dev_del_cmd, *dev_del_args;
+    const char *dev_del_str;
+    char response[BUFFER_SIZE];
+
+    // e.g., { "execute": "device_del", "arguments": { "id": "dimm0" } }
+    dev_del_args = json_object_new_object();
+    json_object_object_add(dev_del_args, "id", json_object_new_string(request->dimm_id));
+
+    dev_del_cmd = json_object_new_object();
+    json_object_object_add(dev_del_cmd, "execute", json_object_new_string("device_del"));
+    json_object_object_add(dev_del_cmd, "arguments", dev_del_args);
+
+    dev_del_str = json_object_to_json_string(dev_del_cmd);
+
+    ret = send_qemu_cmd(vm_id, dev_del_str, response);
+     if (ret < 0) {
+        fprintf(stderr, "Failed to delete device %s\n", dev_del_str);
+        return -1;
+    }
+    // TODO: check whether response is valid
+    // Note: releasing root json object will release all objects automatically
+    json_object_put(dev_del_cmd);
 
     return 0;
 }
@@ -216,6 +276,30 @@ int qemu_agent_hotplug_memory(int vm_id, struct hotplug_request *request)
     ret = qemu_agent_add_device(vm_id, request);
     if (ret < 0) {
         fprintf(stderr, "Failed to hotplug memory to VM %d\n", vm_id);
+        return -1;
+    }
+
+    return 0;
+}
+
+int qemu_agent_hotunplug_memory(int vm_id, struct hotunplug_request *request)
+{
+    int ret;
+
+    // Step 1: hot-unplug memory device from VM
+    ret = qemu_agent_del_device(vm_id, request);
+    if (ret < 0) {
+        fprintf(stderr, "Failed to hotunplug memory from VM %d\n", vm_id);
+        return -1;
+    }
+
+    /* Step 2: wait QEMU clear the device before deteling the object */
+    usleep(US_PER_SECOND);
+
+    // Step 3: detele memory object
+    ret = qemu_agent_free_object(vm_id, request);
+    if (ret < 0) {
+        fprintf(stderr, "Failed to hotunplug memory from VM %d\n", vm_id);
         return -1;
     }
 
