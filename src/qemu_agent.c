@@ -141,6 +141,32 @@ fail:
     return -1;
 }
 
+static bool is_response_success(const char *response)
+{
+    json_object *ret_obj, *resp_obj;
+
+    resp_obj = json_tokener_parse(response);
+    if (!resp_obj) {
+        fprintf(stderr, "Failed to parse QMP response: %s\n", response);
+        return false;
+    }
+
+    if (!json_object_object_get_ex(resp_obj, "return", &ret_obj)) {
+        json_object_put(resp_obj);
+        return false;
+    }
+
+    // Response will be {"return": {}} if success
+    if (json_object_get_type(ret_obj) != json_type_object ||
+        json_object_object_length(ret_obj) != 0) {
+        json_object_put(resp_obj);
+        return false;
+    }
+
+    json_object_put(resp_obj);
+    return true;
+}
+
 static int qemu_agent_create_object(int vm_id, struct hotplug_request *request)
 {
     int ret;
@@ -164,13 +190,24 @@ static int qemu_agent_create_object(int vm_id, struct hotplug_request *request)
     ret = send_qemu_cmd(vm_id, obj_add_str, response);
     if (ret < 0) {
         fprintf(stderr, "Failed to create object: %s\n", obj_add_str);
-        return -1;
+        ret = -1;
+        goto out;
     }
-    // TODO: check whether response is valid
-    // Note: releasing root json object will release all objects automatically
-    json_object_put(obj_add_cmd);
 
-    return 0;
+    if (!is_response_success(response)) {
+        fprintf(stderr, "Failed to create object: %s", response);
+        ret = -1;
+        goto out;
+    }
+
+    ret = 0;
+out:
+    if (obj_add_cmd) {
+        // releasing root json object will release all objects automatically
+        json_object_put(obj_add_cmd);
+    }
+
+    return ret;
 }
 
 static int qemu_agent_free_object(int vm_id, struct hotunplug_request *request)
@@ -191,14 +228,25 @@ static int qemu_agent_free_object(int vm_id, struct hotunplug_request *request)
     obj_free_str = json_object_to_json_string(obj_free_cmd);
     ret = send_qemu_cmd(vm_id, obj_free_str, response);
     if (ret < 0) {
-        fprintf(stderr, "Failed to create object: %s\n", obj_free_str);
-        return -1;
+        fprintf(stderr, "Failed to free object: %s\n", obj_free_str);
+        ret = -1;
+        goto out;
     }
-    // TODO: check whether response is valid
-    // Note: releasing root json object will release all objects automatically
-    json_object_put(obj_free_cmd);
 
-    return 0;
+    if (!is_response_success(response)) {
+        fprintf(stderr, "Failed to free object: %s", response);
+        ret = -1;
+        goto out;
+    }
+
+    ret = 0;
+out:
+    if (obj_free_cmd) {
+        // releasing root json object will release all objects automatically
+        json_object_put(obj_free_cmd);
+    }
+
+    return ret;
 }
 
 static int qemu_agent_add_device(int vm_id, struct hotplug_request *request)
@@ -223,13 +271,24 @@ static int qemu_agent_add_device(int vm_id, struct hotplug_request *request)
     ret = send_qemu_cmd(vm_id, dev_add_str, response);
      if (ret < 0) {
         fprintf(stderr, "Failed to add device %s\n", dev_add_str);
-        return -1;
+        ret = -1;
+        goto out;
     }
-    // TODO: check whether response is valid
-    // Note: releasing root json object will release all objects automatically
-    json_object_put(dev_add_cmd);
 
-    return 0;
+    if (!is_response_success(response)) {
+        fprintf(stderr, "Failed to add devuce: %s", response);
+        ret = -1;
+        goto out;
+    }
+
+    ret = 0;
+out:
+    if (dev_add_cmd) {
+        // Note: releasing root json object will release all objects automatically
+        json_object_put(dev_add_cmd);
+    }
+
+    return ret;
 }
 
 static int qemu_agent_del_device(int vm_id, struct hotunplug_request *request)
@@ -252,13 +311,24 @@ static int qemu_agent_del_device(int vm_id, struct hotunplug_request *request)
     ret = send_qemu_cmd(vm_id, dev_del_str, response);
      if (ret < 0) {
         fprintf(stderr, "Failed to delete device %s\n", dev_del_str);
-        return -1;
+        ret = -1;
+        goto out;
     }
-    // TODO: check whether response is valid
-    // Note: releasing root json object will release all objects automatically
-    json_object_put(dev_del_cmd);
 
-    return 0;
+    if (!is_response_success(response)) {
+        fprintf(stderr, "Failed to add devuce: %s", response);
+        ret = -1;
+        goto out;
+    }
+
+    ret = 0;
+out:
+    if (dev_del_cmd) {
+        // Note: releasing root json object will release all objects automatically
+        json_object_put(dev_del_cmd);
+    }
+
+    return ret;
 }
 
 int qemu_agent_hotplug_memory(int vm_id, struct hotplug_request *request)
