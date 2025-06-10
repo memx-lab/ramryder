@@ -13,6 +13,10 @@
 #include "util_common.h"
 #include "vm_manager.h"
 
+// These are used by monitor thread to filter unreasonable results
+#define MAX_BW_THRESHOLD_GB 250
+#define MIN_BW_THRESHOLD_GB 2
+
 // for monitor
 static volatile int running = 1;
 static pthread_t monitor_thread;
@@ -167,6 +171,13 @@ static void upload_vm_bw_to_cloud_db(struct vm_instance *VM)
 {
     char influx_data[INFLUXDB_DATA_LENGTH];
 
+    // Filter unresonable bandwidth results
+    // TODO: fix this issue. Currently, if we use cores from both sockets,
+    // the results looks wired.
+    if (MB_TO_GB(VM->mem_bw) > MAX_BW_THRESHOLD_GB) {
+        return;
+    }
+
     snprintf(influx_data, sizeof(influx_data),
              "vm_bandwidth,vm_id=%d bandwidth_local=%lu,bandwidth_remote=%lu",
              VM->vm_id, VM->mem_bw_local, VM->mem_bw_remote);
@@ -176,15 +187,21 @@ static void upload_vm_bw_to_cloud_db(struct vm_instance *VM)
 
 static void upload_vm_latency_to_cloud_db(struct vm_instance *VM)
 {
+    bool latency_valid = true;
     char influx_data[INFLUXDB_DATA_LENGTH];
 
     // We use little's law to estimate latency. However, if there is no workload,
     // the estimated latency looks not resonable. Hence, we filter unresonable latency
-    // by checking whether bandwidth is less then 200 MB/s.
+    // by checking whether bandwidth is in valid range.
     // TODO: find a better way to filter unresonable latency.
+    if (MB_TO_GB(VM->mem_bw) > MAX_BW_THRESHOLD_GB ||
+        MB_TO_GB(VM->mem_bw) < MIN_BW_THRESHOLD_GB) {
+        latency_valid = false;
+    }
+
     snprintf(influx_data, sizeof(influx_data),
              "vm_latency,vm_id=%d l3_miss_latency=%f", VM->vm_id, 
-             VM->mem_bw < 200 ? 0 : VM->cur_metrics[METRIC_TYPE_LOAD_L3_MISS_LAT]);
+             latency_valid ? VM->cur_metrics[METRIC_TYPE_LOAD_L3_MISS_LAT] : 0);
 
     cloud_db_client_send(influx_data);
 }
@@ -209,6 +226,7 @@ static void __accumulate_bw_per_core(struct vm_instance *VM, int core_id, void *
 {
     core_metrics_t *core_metrics = (core_metrics_t *)arg;
 
+    // units in MB
     VM->mem_bw_local += core_metrics->core_local_bw[core_id];
     VM->mem_bw_remote += core_metrics->core_remote_bw[core_id];
 }
