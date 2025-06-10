@@ -19,7 +19,6 @@ CPU_SET_12="20-25,60-65"
 CPU_SET_16="20-27,60-67"
 CPU_SET_20="20-29,60-69"
 CPU_SET_24="20-31,60-71"
-#CPU_SET_40="20-39,60-79"
 CPU_SET_40="0-19,40-59"
 
 CPU_SET="$CPU_SET_40"
@@ -27,15 +26,10 @@ CPU_SET="$CPU_SET_40"
 # must create VM instance before allocating
 create_vm_instance $VMID $CPU_SET
 mem0=$(allocate_memory_object 0 0 $VMID 25600)
-mem1=$(allocate_memory_object 0 1 $VMID 25600)
 node0=$(allocate_numa_node 0)
 node1=$(allocate_numa_node 1)
 node2=$(allocate_numa_node 2)
 node3=$(allocate_numa_node 3)
-
-# for debug
-echo $mem0
-echo $mem1
 
 # must use memX as *memdev* id
 sudo taskset -c $CPU_SET $QEMU_BIN \
@@ -43,11 +37,10 @@ sudo taskset -c $CPU_SET $QEMU_BIN \
     -enable-kvm \
     -cpu host \
     -smp 40 \
-    -m 50G,slots=256,maxmem=1024G \
+    -m 25G,slots=256,maxmem=1024G \
     $mem0 \
-    $mem1 \
     $node0,memdev=mem0,cpus=0-39 \
-    $node1,memdev=mem1 \
+    $node1 \
     $node2 \
     $node3 \
     -device virtio-scsi-pci,id=scsi0 \
