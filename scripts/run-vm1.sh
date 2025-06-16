@@ -6,7 +6,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 # unique ID for each VM
 VMID=1
 # VM OS image
-OSIMGF=$IMGDIR/u20s.qcow2
+OSIMGF=$IMGDIR/nvcloud-image-1.qcow2
 # VM disk image
 DISK=$IMGDIR/mydisk.img
 

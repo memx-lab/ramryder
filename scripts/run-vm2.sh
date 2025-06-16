@@ -6,7 +6,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 # unique ID for each VM
 VMID=2
 # VM OS image
-OSIMGF=$IMGDIR/u20s_2.qcow2
+OSIMGF=$IMGDIR/nvcloud-image-2.qcow2
 
 NAME=VM-NUMA-$VMID
 QMP_SOCK=$SOCK_PATH/qmp-sock-$VMID
