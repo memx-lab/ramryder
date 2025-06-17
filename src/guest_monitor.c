@@ -31,6 +31,7 @@ static bool use_proxy = false;
 static char *proxy_addr = NULL;
 static CURL *g_curl = NULL;
 struct curl_slist *g_headers = NULL;
+static uint64_t g_time_now_s;
 
 static int guest_monitor_load_config(const char* config_file)
 {
@@ -159,8 +160,8 @@ static void upload_vm_cp_to_cloud_db(struct vm_instance *VM, const char *json_st
         int mem_available = json_object_get_int(json_object_object_get(meminfo, "mem-available"));
 
         snprintf(influx_data, sizeof(influx_data),
-                "guest_memory,vm_id=%d,node=%d memory_free=%d,memory_total=%d,memory_available=%d",
-                VM->vm_id, index, mem_free, mem_total, mem_available);
+            "guest_memory,vm_id=%d,node=%d memory_free=%d,memory_total=%d,memory_available=%d %lu",
+            VM->vm_id, index, mem_free, mem_total, mem_available, g_time_now_s);
         cloud_db_client_send(influx_data);
     }
 
@@ -179,8 +180,8 @@ static void upload_vm_bw_to_cloud_db(struct vm_instance *VM)
     }
 
     snprintf(influx_data, sizeof(influx_data),
-             "vm_bandwidth,vm_id=%d bandwidth_local=%lu,bandwidth_remote=%lu",
-             VM->vm_id, VM->mem_bw_local, VM->mem_bw_remote);
+             "vm_bandwidth,vm_id=%d bandwidth_local=%lu,bandwidth_remote=%lu %lu",
+             VM->vm_id, VM->mem_bw_local, VM->mem_bw_remote, g_time_now_s);
 
     cloud_db_client_send(influx_data);
 }
@@ -200,8 +201,8 @@ static void upload_vm_latency_to_cloud_db(struct vm_instance *VM)
     }
 
     snprintf(influx_data, sizeof(influx_data),
-             "vm_latency,vm_id=%d l3_miss_latency=%f", VM->vm_id, 
-             latency_valid ? VM->cur_metrics[METRIC_TYPE_LOAD_L3_MISS_LAT] : 0);
+        "vm_latency,vm_id=%d l3_miss_latency=%f %lu", VM->vm_id,
+        latency_valid ? VM->cur_metrics[METRIC_TYPE_LOAD_L3_MISS_LAT] : 0, g_time_now_s);
 
     cloud_db_client_send(influx_data);
 }
@@ -290,8 +291,13 @@ static void *__monitor_loop(void *arg __attribute__((unused)))
     memdata_t md;
     core_metrics_t core_metrics;
     uint32_t monitor_interval_in_us = SECOND_TO_US(monitor_interval_in_second);
+    struct timespec ts;
 
     while (running) {
+        /* Update current time and use same time for all data per iteration */
+        clock_gettime(CLOCK_REALTIME, &ts);
+        g_time_now_s = ts.tv_sec;
+
 #ifdef ENABLE_DEBUG
         printf("======================================================================\n");
 #endif
