@@ -47,6 +47,18 @@ cd build
 make -j$(nproc)
 ```
 
+## Quick Start
+#### Get NVSL Cloud Image
+Please reach out to the maintainer (yaz093@ucsd.edu) to get image and refer to readme.txt in the image package to get login information.
+```bash
+tar -xf nvcloud-image-clean.tar.xz
+```
+
+#### Launch VM instance
+```bash
+run-vm.sh
+```
+
 ## Notes on Submodules
 
 - **Submodules are not automatically updated** when you `git pull`.  
