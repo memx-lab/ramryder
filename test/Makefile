@@ -1,14 +1,18 @@
 PROJECT_ROOT := $(abspath ..)
 SRC_DIR := $(PROJECT_ROOT)/src
-TEST_DIR := $(PROJECT_ROOT)/test
 
 CC = gcc
 
-ifdef DEBUG
-    CFLAGS = -Wall -Wextra -g -DENABLE_DEBUG -I$(SRC_DIR) -I$(PROJECT_ROOT)/include
+-include $(PROJECT_ROOT)/config.mk
+
+CFLAGS = -Wall -Wextra
+ifeq ($(CONFIG_DEBUG),y)
+    CFLAGS += -g -DENABLE_DEBUG
 else
-    CFLAGS = -Wall -Wextra -O2 -I$(SRC_DIR) -I$(PROJECT_ROOT)/include
+    CFLAGS += -O2
 endif
+
+CFLAGS += -I$(SRC_DIR) -I$(PROJECT_ROOT)/include
 
 LDFLAGS = -L$(PROJECT_ROOT)/lib -lpcm_public -ljson-c -lpthread -lcurl -lm -lpfm -lstdc++
 

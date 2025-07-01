@@ -2,7 +2,7 @@ PROJECT_ROOT := $(abspath ..)
 
 CC = gcc
 
--include config.mk
+-include $(PROJECT_ROOT)/config.mk
 
 CFLAGS = -Wall -Wextra
 ifeq ($(CONFIG_DEBUG),y)
