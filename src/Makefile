@@ -2,11 +2,16 @@ PROJECT_ROOT := $(abspath ..)
 
 CC = gcc
 
-ifdef DEBUG
-    CFLAGS = -Wall -Wextra -g -DENABLE_DEBUG -I$(PROJECT_ROOT)/include
+-include config.mk
+
+CFLAGS = -Wall -Wextra
+ifeq ($(CONFIG_DEBUG),y)
+    CFLAGS += -g -DENABLE_DEBUG
 else
-    CFLAGS = -Wall -Wextra -O2 -I$(PROJECT_ROOT)/include
+    CFLAGS += -O2
 endif
+
+CFLAGS += -I$(PROJECT_ROOT)/include
 
 LDFLAGS = -L$(PROJECT_ROOT)/lib -lpcm_public -ljson-c -lpthread -lcurl -lm -lstdc++
 TARGETS = resource_manager resource_client

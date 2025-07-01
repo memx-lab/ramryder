@@ -1,0 +1,33 @@
+#!/bin/bash
+set -e
+
+source ./CONFIG
+
+function get_usage() {
+    echo "Usage: ./configure [OPTIONS]"
+    echo "  --enable-debug        Enable debug mode"
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --enable-debug)
+            CONFIG_DEBUG=y ;;
+        --help)
+            get_usage
+            exit 0 ;;
+        *)
+            echo "Unknown option: $1"
+            get_usage
+            exit 1 ;;
+    esac
+    shift
+done
+
+# generate configuration file used by Makefile
+cat > config.mk <<EOF
+CONFIG_DEBUG=$CONFIG_DEBUG
+EOF
+#end of output
+
+echo "Generated configuration:"
+cat config.mk
