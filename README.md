@@ -13,6 +13,7 @@ project/
 ├── lib/           # Third-party Libs
 ├── scripts/       # Project scripts
 ├── analysis/      # Data analysis scripts
+├── ...
 ```
 
 ## Build Project
