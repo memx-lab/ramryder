@@ -6,12 +6,15 @@ source ./CONFIG
 function get_usage() {
     echo "Usage: ./configure [OPTIONS]"
     echo "  --enable-debug        Enable debug mode"
+    echo "  --arch-cpu-amd        Compile for AMD platforms"
 }
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --enable-debug)
             CONFIG_DEBUG=y ;;
+        --arch-cpu-amd)
+            CONFIG_AMD=y ;;
         --help)
             get_usage
             exit 0 ;;
@@ -26,6 +29,7 @@ done
 # generate configuration file used by Makefile
 cat > config.mk <<EOF
 CONFIG_DEBUG=$CONFIG_DEBUG
+CONFIG_AMD=$CONFIG_AMD
 EOF
 #end of output
 

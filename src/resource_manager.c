@@ -455,9 +455,11 @@ int main()
         exit(EXIT_FAILURE);
     }
 
+#ifndef ARCH_AMD
     if (guest_monitor_server_start(CONFIG_FILE) != 0) {
         exit(EXIT_FAILURE);
     }
+#endif
 
     rpc_server_start();
 

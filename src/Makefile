@@ -11,6 +11,10 @@ else
     CFLAGS += -O2
 endif
 
+ifeq ($(CONFIG_AMD),y)
+       CFLAGS += -DARCH_AMD
+endif
+
 CFLAGS += -I$(PROJECT_ROOT)/include
 
 LDFLAGS = -L$(PROJECT_ROOT)/lib -lpcm_public -ljson-c -lpthread -lcurl -lm -lstdc++
