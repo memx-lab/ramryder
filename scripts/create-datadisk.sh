@@ -1,0 +1,1 @@
+qemu-img create -f qcow2 mydisk.img 100G
