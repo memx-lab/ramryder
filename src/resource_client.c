@@ -53,21 +53,49 @@ static void send_command(const char *command)
     close(sockfd);
 }
 
-static void print_usage(void)
+static void print_usage(const char *progname)
 {
+    fprintf(stderr, "Resource Manager Client\n");
+    fprintf(stderr, "Send management commands to the resource manager over %s.\n\n",
+            SERVER_SOCKET);
+
     fprintf(stderr, "Usage:\n");
-    fprintf(stderr, "   get-mem-info vid=<vm_id>\n");
-    fprintf(stderr, "   get-mem-pool\n");
-    fprintf(stderr, "   get-num-nodes\n");
-    fprintf(stderr, "   get-node-info nid=<node_id>\n");
-    fprintf(stderr, "   alloc-mem tid=<tid> did=<dev id> vid=<VM id> size=<mb>\n");
-    fprintf(stderr, "   free-mem vid=<VM id> memid=<memdev id>\n");
-    fprintf(stderr, "   attach-mem memid=<memory id> vid=<VM id> nid=<NUMA node id>\n");
-    fprintf(stderr, "   detach-mem memid=<memory id> vid=<VM id>\n");
-    fprintf(stderr, "   create-vm vid=<vm id> coreset=[20-30,50-60]\n");
-    fprintf(stderr, "   destroy-vm vid=<vm id>\n");
-    fprintf(stderr, "   start-vm vid=<vm id>\n");
-    fprintf(stderr, "   stop-vm vid=<vm id>\n");
+    fprintf(stderr, "  %s <command> [arguments]\n\n", progname);
+
+    fprintf(stderr, "Query Commands:\n");
+    fprintf(stderr, "  %-60s %s\n", "get-mem-info vid=<vm_id>",
+            "Show memory information for a VM.");
+    fprintf(stderr, "  %-60s %s\n", "get-mem-pool",
+            "Show the current memory pool state.");
+    fprintf(stderr, "  %-60s %s\n", "get-num-nodes",
+            "Show the number of available NUMA nodes.");
+    fprintf(stderr, "  %-60s %s\n\n", "get-node-info nid=<node_id>",
+            "Show details for a C-NUMA node.");
+
+    fprintf(stderr, "Memory Management Commands:\n");
+    fprintf(stderr, "  %-60s %s\n", "alloc-mem tid=<tid> did=<dev_id> vid=<vm_id> size=<mb>",
+            "Allocate memory for a VM.");
+    fprintf(stderr, "  %-60s %s\n", "free-mem vid=<vm_id> memid=<memdev_id>",
+            "Release an allocated memory device.");
+    fprintf(stderr, "  %-60s %s\n", "attach-mem memid=<memory_id> vid=<vm_id> nid=<node_id>",
+            "Attach memory to a VM on a NUMA node.");
+    fprintf(stderr, "  %-60s %s\n\n", "detach-mem memid=<memory_id> vid=<vm_id>",
+            "Detach memory from a VM.");
+
+    fprintf(stderr, "VM Lifecycle Commands:\n");
+    fprintf(stderr, "  %-60s %s\n", "create-vm vid=<vm_id> coreset=[start-end,...]",
+            "Register a VM and its CPU core set.");
+    fprintf(stderr, "  %-60s %s\n", "destroy-vm vid=<vm_id>",
+            "Remove a VM from the manager.");
+    fprintf(stderr, "  %-60s %s\n", "start-vm vid=<vm_id>",
+            "Mark a VM as started.");
+    fprintf(stderr, "  %-60s %s\n\n", "stop-vm vid=<vm_id>",
+            "Mark a VM as stopped.");
+
+    fprintf(stderr, "Examples:\n");
+    fprintf(stderr, "  %s get-mem-info vid=3\n", progname);
+    fprintf(stderr, "  %s alloc-mem tid=1 did=0 vid=3 size=1024\n", progname);
+    fprintf(stderr, "  %s create-vm vid=3 coreset=[20-30,50-60]\n", progname);
 }
 
 int main(int argc, char *argv[])
@@ -76,7 +104,7 @@ int main(int argc, char *argv[])
     char cmd_full[BUFFER_SIZE] = {0};
 
     if (argc < 2) {
-        print_usage();
+        print_usage(argv[0]);
         return -1;
     }
 
@@ -85,35 +113,35 @@ int main(int argc, char *argv[])
     if (strcmp(cmd_action, "get-mem-info") == 0) {
         if (argc != 3) {
             fprintf(stderr, "Invalid usage\n");
-            print_usage();
+            print_usage(argv[0]);
             return -1;
         }
         snprintf(cmd_full, sizeof(cmd_full), "%s %s", cmd_action, argv[2]);
     } else if (strcmp(cmd_action, "get-mem-pool") == 0) {
         if (argc != 2) {
             fprintf(stderr, "Invalid usage\n");
-            print_usage();
+            print_usage(argv[0]);
             return -1;
         }
         snprintf(cmd_full, sizeof(cmd_full), "%s", cmd_action);
     } else if (strcmp(cmd_action, "get-num-nodes") == 0) {
         if (argc != 2) {
             fprintf(stderr, "Invalid usage\n");
-            print_usage();
+            print_usage(argv[0]);
             return -1;
         }
         snprintf(cmd_full, sizeof(cmd_full), "%s", cmd_action);
     } else if (strcmp(cmd_action, "get-node-info") == 0) {
         if (argc != 3) {
             fprintf(stderr, "Invalid usage\n");
-            print_usage();
+            print_usage(argv[0]);
             return -1;
         }
         snprintf(cmd_full, sizeof(cmd_full), "%s %s", cmd_action, argv[2]);
     } else if (strcmp(cmd_action, "alloc-mem") == 0) {
         if (argc != 6) {
             fprintf(stderr, "Invalid usage\n");
-            print_usage();
+            print_usage(argv[0]);
             return -1;
         }
         snprintf(cmd_full, sizeof(cmd_full), "%s %s %s %s %s",
@@ -121,7 +149,7 @@ int main(int argc, char *argv[])
     } else if (strcmp(cmd_action, "free-mem") == 0) {
         if (argc != 4) {
             fprintf(stderr, "Invalid usage\n");
-            print_usage();
+            print_usage(argv[0]);
             return -1;
         }
         snprintf(cmd_full, sizeof(cmd_full), "%s %s %s",
@@ -129,7 +157,7 @@ int main(int argc, char *argv[])
     } else if (strcmp(cmd_action, "attach-mem") == 0) {
         if (argc != 5) {
             fprintf(stderr, "Invalid usage\n");
-            print_usage();
+            print_usage(argv[0]);
             return -1;
         }
         // e.g., attach-mem mid=<memory id> vid=<VM id> nid=<NUMA node id>
@@ -138,7 +166,7 @@ int main(int argc, char *argv[])
     } else if (strcmp(cmd_action, "detach-mem") == 0) {
         if (argc != 4) {
             fprintf(stderr, "Invalid usage\n");
-            print_usage();
+            print_usage(argv[0]);
             return -1;
         }
         // e.g., detach-mem memid=<memory id> vid=<VM id>
@@ -147,34 +175,34 @@ int main(int argc, char *argv[])
     } else if (strcmp(cmd_action, "create-vm") == 0) {
         if (argc != 4) {
             fprintf(stderr, "Invalid usage\n");
-            print_usage();
+            print_usage(argv[0]);
             return -1;
         }
         snprintf(cmd_full, sizeof(cmd_full), "%s %s %s", cmd_action, argv[2], argv[3]);
     } else if (strcmp(cmd_action, "destroy-vm") == 0) {
         if (argc != 3) {
             fprintf(stderr, "Invalid usage\n");
-            print_usage();
+            print_usage(argv[0]);
             return -1;
         }
         snprintf(cmd_full, sizeof(cmd_full), "%s %s", cmd_action, argv[2]);
     } else if (strcmp(cmd_action, "start-vm") == 0) {
         if (argc != 3) {
             fprintf(stderr, "Invalid usage\n");
-            print_usage();
+            print_usage(argv[0]);
             return -1;
         }
         snprintf(cmd_full, sizeof(cmd_full), "%s %s", cmd_action, argv[2]);
     } else if (strcmp(cmd_action, "stop-vm") == 0) {
         if (argc != 3) {
             fprintf(stderr, "Invalid usage\n");
-            print_usage();
+            print_usage(argv[0]);
             return -1;
         }
         snprintf(cmd_full, sizeof(cmd_full), "%s %s", cmd_action, argv[2]);
     } else {
         fprintf(stderr, "Unknown command: %s\n", cmd_action);
-        print_usage();
+        print_usage(argv[0]);
         return -1;
     }
 
