@@ -6,47 +6,52 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 # unique ID for each VM
 VMID=0
 # VM OS image
-OSIMGF=$IMGDIR/nvcloud-image.qcow2
-# VM disk image
-DISK=$IMGDIR/mydisk.img
+OSIMGF=$IMGDIR/nvcloud-image-clean.qcow2
 
 NAME=VM-NUMA-$VMID
 QMP_SOCK=$SOCK_PATH/qmp-sock-$VMID
 QGA_SOCK=$SOCK_PATH/qga-sock-$VMID
 
-# pre-define some core sets for convinience
-CPU_SET_12="20-25,60-65"
-CPU_SET_16="20-27,60-67"
-CPU_SET_20="20-29,60-69"
-CPU_SET_24="20-31,60-71"
-CPU_SET_40="0-19,40-59"
-
-CPU_SET="$CPU_SET_40"
+# configure cores (please use hyper-thread siblings if enabled)
+CPU_SET="0-9,20-29"
 
 # must create VM instance before allocating
 create_vm_instance $VMID $CPU_SET
 mem0=$(allocate_memory_object 0 0 $VMID 25600)
+mem1=$(allocate_memory_object 0 1 $VMID 25600)
+mem2=$(allocate_memory_object 0 2 $VMID 25600)
+mem3=$(allocate_memory_object 0 3 $VMID 25600)
+mem4=$(allocate_memory_object 0 4 $VMID 25600)
+mem5=$(allocate_memory_object 0 5 $VMID 25600)
 node0=$(allocate_numa_node 0)
 node1=$(allocate_numa_node 1)
 node2=$(allocate_numa_node 2)
 node3=$(allocate_numa_node 3)
+node4=$(allocate_numa_node 4)
+node5=$(allocate_numa_node 5)
 
 # must use memX as *memdev* id
 sudo taskset -c $CPU_SET $QEMU_BIN \
     -name $NAME \
     -enable-kvm \
     -cpu host \
-    -smp 40 \
-    -m 25G,slots=256,maxmem=1024G \
+    -smp 20 \
+    -m 150G,slots=256,maxmem=1024G \
     $mem0 \
-    $node0,memdev=mem0,cpus=0-39 \
-    $node1 \
-    $node2 \
-    $node3 \
+    $mem1 \
+    $mem2 \
+    $mem3 \
+    $mem4 \
+    $mem5 \
+    $node0,memdev=mem0,cpus=0-19 \
+    $node1,memdev=mem1 \
+    $node2,memdev=mem2 \
+    $node3,memdev=mem3 \
+    $node4,memdev=mem4 \
+    $node5,memdev=mem5 \
     -device virtio-scsi-pci,id=scsi0 \
     -device scsi-hd,drive=hd0 \
     -drive file=$OSIMGF,if=none,aio=native,cache=none,format=qcow2,id=hd0 \
-    -drive file=$DISK,format=qcow2,if=virtio \
     -net user,hostfwd=tcp::2806-:22 \
     -net nic,model=virtio \
     -nographic \
@@ -54,4 +59,4 @@ sudo taskset -c $CPU_SET $QEMU_BIN \
     -chardev socket,path=$QGA_SOCK,server=on,wait=off,id=qga0 \
     -device virtio-serial \
     -device virtserialport,chardev=qga0,name=org.qemu.guest_agent.0 \
-    2>&1 | tee log
+    2>&1
