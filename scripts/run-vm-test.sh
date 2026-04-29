@@ -7,6 +7,8 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 VMID=0
 # VM OS image
 OSIMGF=$IMGDIR/nvcloud-image-clean.qcow2
+# VM disk image
+DISK=$IMGDIR/mydisk.img
 
 NAME=VM-NUMA-$VMID
 QMP_SOCK=$SOCK_PATH/qmp-sock-$VMID
@@ -21,8 +23,8 @@ mem0=$(allocate_memory_object 0 0 $VMID 51200)
 mem1=$(allocate_memory_object 0 1 $VMID 51200)
 mem2=$(allocate_memory_object 0 2 $VMID 51200)
 mem3=$(allocate_memory_object 0 3 $VMID 51200)
-mem4=$(allocate_memory_object 0 4 $VMID 51200)
-mem5=$(allocate_memory_object 0 5 $VMID 51200)
+mem4=$(allocate_memory_object 1 0 $VMID 51200)
+mem5=$(allocate_memory_object 1 1 $VMID 51200)
 node0=$(allocate_numa_node 0)
 node1=$(allocate_numa_node 1)
 node2=$(allocate_numa_node 2)
@@ -52,6 +54,7 @@ sudo taskset -c $CPU_SET $QEMU_BIN \
     -device virtio-scsi-pci,id=scsi0 \
     -device scsi-hd,drive=hd0 \
     -drive file=$OSIMGF,if=none,aio=native,cache=none,format=qcow2,id=hd0 \
+    -drive file=$DISK,format=qcow2,if=virtio \
     -device vfio-pci,host=0000:17:00.0 \
     -net user,hostfwd=tcp::2806-:22 \
     -net nic,model=virtio \
