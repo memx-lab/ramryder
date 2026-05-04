@@ -252,6 +252,7 @@ static int memory_pool_load_config(const char* config_file)
                     return -1;
                 }
                 struct memory_dax_dev mem_device;
+                memset(&mem_device, 0, sizeof(mem_device));
                 if (sscanf(value1, "path=%255s", mem_device.dev_path) != 1 ||
                     sscanf(value2, "size_mb=%d", &mem_device.total_size_mb) != 1 ||
                     sscanf(value3, "tier_id=%d", &mem_device.tier_id) != 1 ||
@@ -292,6 +293,10 @@ static int init_memory_resource(const char* config_file)
         g_mem_devs[i].node_id = i;
         g_mem_devs[i].total_segments = g_mem_devs[i].total_size_mb / g_segment_size_mb;
         g_mem_devs[i].used_segments = 0;
+        for (int j = 0; j < MAX_SEGMENTS; j++) {
+            g_mem_devs[i].segments[j].allocated = false;
+            g_mem_devs[i].segments[j].used_vm_id = -1;
+        }
     }
 
     return 0;
