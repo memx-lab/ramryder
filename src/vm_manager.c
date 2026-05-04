@@ -335,7 +335,7 @@ int vm_mngr_instance_stop(int vm_id)
     return 0;
 }
 
-int vm_mngr_instance_alloc_mem(int tier_id, int dax_id, int vm_id,
+int vm_mngr_instance_alloc_mem(int node_id, int vm_id,
                         int size_mb, struct vm_mem_req *vm_mem_req)
 {
     int ret;
@@ -356,10 +356,10 @@ int vm_mngr_instance_alloc_mem(int tier_id, int dax_id, int vm_id,
     }
 
     mem_req = &mem_dev->memory_req;
-    ret = memory_pool_allocate_segments(tier_id, dax_id, vm_id, size_mb, mem_req);
+    ret = memory_pool_allocate_segments(node_id, vm_id, size_mb, mem_req);
     if (ret < 0) {
-        fprintf(stderr, "Filed to alllocate memory from pool, tier %d, dax %d, vm %d, size %dMB\n",
-            tier_id, dax_id, vm_id, size_mb);
+        fprintf(stderr, "Filed to alllocate memory from pool, node %d, vm %d, size %dMB\n",
+            node_id, vm_id, size_mb);
         free(mem_dev);
         return -1;
     }
@@ -403,7 +403,7 @@ int vm_mngr_instance_free_mem(int vm_id, int memdev_idx)
     }
 
     mem_req = &mem_dev->memory_req;
-    ret = memory_pool_release_segments(mem_req->tier_id, mem_req->dax_id,
+    ret = memory_pool_release_segments(mem_req->node_id,
                 vm_id, mem_req->offset_mb, mem_req->size_mb);
     if (ret < 0) {
         fprintf(stderr, "Failed to release segments from pool, VM %d, memdev %d\n",

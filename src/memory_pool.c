@@ -93,7 +93,7 @@ static int allocate_segments(struct memory_dax_dev *mem_dev, int num_segments, i
     return start_index;
 }
 
-int memory_pool_allocate_segments(int tier_id, int dax_id, int vm_id,
+int memory_pool_allocate_segments(int node_id, int vm_id,
                     int size_mb, struct memory_request *mem_req)
 {
     struct memory_dax_dev *mem_dev = NULL;
@@ -106,15 +106,14 @@ int memory_pool_allocate_segments(int tier_id, int dax_id, int vm_id,
     }
 
     for (int i = 0; i < g_num_devs; i++) {
-        if (g_mem_devs[i].tier_id == tier_id && g_mem_devs[i].dax_id == dax_id) {
+        if (g_mem_devs[i].node_id == node_id) {
             mem_dev = &g_mem_devs[i];
             break;
         }
     }
 
     if (mem_dev == NULL) {
-        fprintf(stderr, "Cannot find memory device with tier id %d and dax id: %d\n",
-                tier_id, dax_id);
+        fprintf(stderr, "Cannot find memory device with node id %d\n", node_id);
         return -1;
     }
 
@@ -126,8 +125,7 @@ int memory_pool_allocate_segments(int tier_id, int dax_id, int vm_id,
     }
 
     snprintf(mem_req->dev_path, DEV_PATH_LEN, "%s", mem_dev->dev_path);
-    mem_req->tier_id = tier_id;
-    mem_req->dax_id = dax_id;
+    mem_req->node_id = node_id;
     mem_req->offset_mb = start_index * g_segment_size_mb;
     mem_req->size_mb = num_segments * g_segment_size_mb;
     mem_req->align_mb = g_segment_size_mb;
@@ -161,7 +159,7 @@ static int release_segments(struct memory_dax_dev *mem_dev, int vm_id,
     return 0;
 }
 
-int memory_pool_release_segments(int tier_id, int dax_id, int vm_id, 
+int memory_pool_release_segments(int node_id, int vm_id,
                     int offset_mb, int size_mb)
 {
     int ret;
@@ -175,15 +173,14 @@ int memory_pool_release_segments(int tier_id, int dax_id, int vm_id,
     }
 
     for (int i = 0; i < g_num_devs; i++) {
-        if (g_mem_devs[i].tier_id == tier_id && g_mem_devs[i].dax_id == dax_id) {
+        if (g_mem_devs[i].node_id == node_id) {
             mem_dev = &g_mem_devs[i];
             break;
         }
     }
 
     if (mem_dev == NULL) {
-        fprintf(stderr, "Cannot find memory device with tier id %d and dax id: %d\n",
-                tier_id, dax_id);
+        fprintf(stderr, "Cannot find memory device with node id %d\n", node_id);
         return -1;
     }
 
@@ -192,8 +189,8 @@ int memory_pool_release_segments(int tier_id, int dax_id, int vm_id,
 
     ret = release_segments(mem_dev, vm_id, start_index, segment_count);
     if (ret < 0) {
-        fprintf(stderr, "Failed to release all segments, tier id: %d, dax id: %d, vm id: %d, offset: %dMB, size: %dMB\n",
-        tier_id, dax_id, vm_id, offset_mb, size_mb);   
+        fprintf(stderr, "Failed to release all segments, node id: %d, vm id: %d, offset: %dMB, size: %dMB\n",
+        node_id, vm_id, offset_mb, size_mb);
         return -1;
     }
 

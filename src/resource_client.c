@@ -73,7 +73,7 @@ static void print_usage(const char *progname)
             "Show details for a C-NUMA node.");
 
     fprintf(stderr, "Memory Management Commands:\n");
-    fprintf(stderr, "  %-60s %s\n", "alloc-mem tid=<tid> did=<dev_id> vid=<vm_id> size=<mb>",
+    fprintf(stderr, "  %-60s %s\n", "alloc-mem nid=<node_id> vid=<vm_id> size=<mb>",
             "Allocate memory for a VM.");
     fprintf(stderr, "  %-60s %s\n", "free-mem vid=<vm_id> memid=<memdev_id>",
             "Release an allocated memory device.");
@@ -94,7 +94,7 @@ static void print_usage(const char *progname)
 
     fprintf(stderr, "Examples:\n");
     fprintf(stderr, "  %s get-mem-info vid=3\n", progname);
-    fprintf(stderr, "  %s alloc-mem tid=1 did=0 vid=3 size=1024\n", progname);
+    fprintf(stderr, "  %s alloc-mem nid=1 vid=3 size=1024\n", progname);
     fprintf(stderr, "  %s create-vm vid=3 coreset=[20-30,50-60]\n", progname);
 }
 
@@ -139,13 +139,13 @@ int main(int argc, char *argv[])
         }
         snprintf(cmd_full, sizeof(cmd_full), "%s %s", cmd_action, argv[2]);
     } else if (strcmp(cmd_action, "alloc-mem") == 0) {
-        if (argc != 6) {
+        if (argc != 5) {
             fprintf(stderr, "Invalid usage\n");
             print_usage(argv[0]);
             return -1;
         }
-        snprintf(cmd_full, sizeof(cmd_full), "%s %s %s %s %s",
-                    cmd_action, argv[2], argv[3], argv[4], argv[5]);
+        snprintf(cmd_full, sizeof(cmd_full), "%s %s %s %s",
+                    cmd_action, argv[2], argv[3], argv[4]);
     } else if (strcmp(cmd_action, "free-mem") == 0) {
         if (argc != 4) {
             fprintf(stderr, "Invalid usage\n");

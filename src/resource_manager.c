@@ -96,17 +96,17 @@ static char *rpc_handle_alloc_mem(char *args)
 {
     int ret;
     char *response = NULL;
-    int tid = -1, did = -1, vid = -1, size_mb = -1;
+    int nid = -1, vid = -1, size_mb = -1;
     struct vm_mem_req vm_mem_req;
 
-    ret = sscanf(args, "tid=%d did=%d vid=%d size=%d", &tid, &did, &vid, &size_mb);
-    if (ret != 4 || tid < 0 || did < 0|| vid < 0 || size_mb <= 0) {
+    ret = sscanf(args, "nid=%d vid=%d size=%d", &nid, &vid, &size_mb);
+    if (ret != 3 || nid < 0 || vid < 0 || size_mb <= 0) {
         response = strdup("Invalid args");
         return response;
     }
 
     response = malloc(BUFFER_SIZE);
-    ret = vm_mngr_instance_alloc_mem(tid, did, vid, size_mb, &vm_mem_req);
+    ret = vm_mngr_instance_alloc_mem(nid, vid, size_mb, &vm_mem_req);
     if (ret == 0) {
         // DON't change format here which is used by QEMU
         snprintf(response, BUFFER_SIZE, "id=mem%d,mem-path=%s,size=%dM,align=%dM,offset=%dM",

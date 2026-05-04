@@ -31,25 +31,25 @@ int main()
     ret = vm_mngr_instance_create(0, "[0,1]");
     BUG_ON(ret != 0);
 
-    ret = memory_pool_allocate_segments(0, 1, 0, 128, &mem_req);
+    ret = memory_pool_allocate_segments(1, 0, 128, &mem_req);
     BUG_ON(ret != 0);
     BUG_ON(mem_req.offset_mb != 0);
     BUG_ON(mem_req.size_mb != 128);
 
-    ret = memory_pool_allocate_segments(0, 1, 0, 256, &mem_req);
+    ret = memory_pool_allocate_segments(1, 0, 256, &mem_req);
     BUG_ON(ret != 0);
     BUG_ON(mem_req.offset_mb != 128);
     BUG_ON(mem_req.size_mb != 256);
 
-    ret = memory_pool_release_segments(0, 1, 0, 128, 128);
+    ret = memory_pool_release_segments(1, 0, 128, 128);
     BUG_ON(ret != 0);
 
-    ret = memory_pool_allocate_segments(0, 1, 0, 256, &mem_req);
+    ret = memory_pool_allocate_segments(1, 0, 256, &mem_req);
     BUG_ON(ret != 0);
     BUG_ON(mem_req.offset_mb != 384);
     BUG_ON(mem_req.size_mb != 256);
 
-    ret = memory_pool_allocate_segments(0, 1, 0, 128, &mem_req);
+    ret = memory_pool_allocate_segments(1, 0, 128, &mem_req);
     BUG_ON(ret != 0);
     BUG_ON(mem_req.offset_mb != 128);
     BUG_ON(mem_req.size_mb != 128);

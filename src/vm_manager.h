@@ -70,7 +70,7 @@ void vm_mngr_for_each_core(struct vm_instance *VM, core_handler_fn core_handler,
 int vm_mngr_instance_start(int vm_id);
 int vm_mngr_instance_stop(int vm_id);
 bool vm_mngr_check_exit(int vm_id);
-int vm_mngr_instance_alloc_mem(int tier_id, int dax_id, int vm_id,
+int vm_mngr_instance_alloc_mem(int node_id, int vm_id,
                         int size_mb, struct vm_mem_req *vm_mem_req);
 int vm_mngr_instance_free_mem(int vm_id, int memdev_idx);
 struct memory_request *vm_mngr_instance_get_mem(int vm_id, int memdev_idx);

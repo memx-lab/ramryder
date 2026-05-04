@@ -17,12 +17,12 @@ CPU_SET="0-17,20-37"
 
 # must create VM instance before allocating
 create_vm_instance $VMID $CPU_SET
-mem0=$(allocate_memory_object 0 0 $VMID 51200)
-mem1=$(allocate_memory_object 0 1 $VMID 51200)
-mem2=$(allocate_memory_object 0 2 $VMID 51200)
-mem3=$(allocate_memory_object 0 3 $VMID 51200)
-mem4=$(allocate_memory_object 0 4 $VMID 51200)
-mem5=$(allocate_memory_object 0 5 $VMID 51200)
+mem0=$(allocate_memory_object 0 $VMID 51200)
+mem1=$(allocate_memory_object 1 $VMID 51200)
+mem2=$(allocate_memory_object 2 $VMID 51200)
+mem3=$(allocate_memory_object 3 $VMID 51200)
+mem4=$(allocate_memory_object 4 $VMID 51200)
+mem5=$(allocate_memory_object 5 $VMID 51200)
 node0=$(allocate_numa_node 0)
 node1=$(allocate_numa_node 1)
 node2=$(allocate_numa_node 2)
