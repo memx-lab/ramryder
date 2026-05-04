@@ -2,14 +2,32 @@
 
 #include <stdio.h>
 #include <stdbool.h>
+#include <string.h>
 #include <zlog.h>
 
 static zlog_category_t *g_log_cat = NULL;
 static bool g_log_inited = false;
 
-static void rm_log_vfallback(const char *level, const char *fmt, va_list ap)
+static const char *rm_log_level_name(int level)
 {
-    fprintf(stderr, "[%s] ", level);
+    switch (level) {
+    case ZLOG_LEVEL_DEBUG:
+        return "DEBUG";
+    case ZLOG_LEVEL_INFO:
+        return "INFO";
+    case ZLOG_LEVEL_WARN:
+        return "WARN";
+    case ZLOG_LEVEL_ERROR:
+        return "ERROR";
+    default:
+        return "LOG";
+    }
+}
+
+static void rm_log_vfallback(int level, const char *file, const char *func, long line,
+                const char *fmt, va_list ap)
+{
+    fprintf(stderr, "[%s] [%s:%ld %s] ", rm_log_level_name(level), file, line, func);
     vfprintf(stderr, fmt, ap);
     fprintf(stderr, "\n");
 }
@@ -50,54 +68,15 @@ void rm_log_fini(void)
     g_log_inited = false;
 }
 
-void rm_log_info(const char *fmt, ...)
+void rm_log_write(int level, const char *file, const char *func, long line, const char *fmt, ...)
 {
     va_list ap;
 
     va_start(ap, fmt);
     if (g_log_cat) {
-        vzlog_info(g_log_cat, fmt, ap);
+        vzlog(g_log_cat, file, strlen(file), func, strlen(func), line, level, fmt, ap);
     } else {
-        rm_log_vfallback("INFO", fmt, ap);
-    }
-    va_end(ap);
-}
-
-void rm_log_warn(const char *fmt, ...)
-{
-    va_list ap;
-
-    va_start(ap, fmt);
-    if (g_log_cat) {
-        vzlog_warn(g_log_cat, fmt, ap);
-    } else {
-        rm_log_vfallback("WARN", fmt, ap);
-    }
-    va_end(ap);
-}
-
-void rm_log_error(const char *fmt, ...)
-{
-    va_list ap;
-
-    va_start(ap, fmt);
-    if (g_log_cat) {
-        vzlog_error(g_log_cat, fmt, ap);
-    } else {
-        rm_log_vfallback("ERROR", fmt, ap);
-    }
-    va_end(ap);
-}
-
-void rm_log_debug(const char *fmt, ...)
-{
-    va_list ap;
-
-    va_start(ap, fmt);
-    if (g_log_cat) {
-        vzlog_debug(g_log_cat, fmt, ap);
-    } else {
-        rm_log_vfallback("DEBUG", fmt, ap);
+        rm_log_vfallback(level, file, func, line, fmt, ap);
     }
     va_end(ap);
 }
