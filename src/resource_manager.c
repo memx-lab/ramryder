@@ -59,6 +59,19 @@ static char *rpc_handle_get_mem_pool(void)
     return response;
 }
 
+static char *rpc_handle_get_vms(void)
+{
+    char *response = NULL;
+
+    response = malloc(BUFFER_SIZE);
+    if (response == NULL) {
+        return strdup("Failed to allocate response buffer");
+    }
+    vm_mngr_dump_state(response, BUFFER_SIZE);
+
+    return response;
+}
+
 static char *rpc_handle_get_num_nodes(void)
 {
     char *response = NULL;
@@ -388,6 +401,8 @@ static void rpc_server_start(void)
                     response = rpc_handle_get_mem_info(args);
                 } else if (strcmp(cmd, "get-mem-pool") == 0) {
                     response = rpc_handle_get_mem_pool();
+                } else if (strcmp(cmd, "get-vms") == 0) {
+                    response = rpc_handle_get_vms();
                 } else if (strcmp(cmd, "get-num-nodes") == 0) {
                     response = rpc_handle_get_num_nodes();
                 } else if (strcmp(cmd, "get-node-info") == 0) {

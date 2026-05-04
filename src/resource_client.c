@@ -67,6 +67,8 @@ static void print_usage(const char *progname)
             "Show memory information for a VM.");
     fprintf(stderr, "  %-60s %s\n", "get-mem-pool",
             "Show the current memory pool state.");
+    fprintf(stderr, "  %-60s %s\n", "get-vms",
+            "Show all VMs and their allocated memory objects.");
     fprintf(stderr, "  %-60s %s\n", "get-num-nodes",
             "Show the number of available NUMA nodes.");
     fprintf(stderr, "  %-60s %s\n\n", "get-node-info nid=<node_id>",
@@ -118,6 +120,13 @@ int main(int argc, char *argv[])
         }
         snprintf(cmd_full, sizeof(cmd_full), "%s %s", cmd_action, argv[2]);
     } else if (strcmp(cmd_action, "get-mem-pool") == 0) {
+        if (argc != 2) {
+            fprintf(stderr, "Invalid usage\n");
+            print_usage(argv[0]);
+            return -1;
+        }
+        snprintf(cmd_full, sizeof(cmd_full), "%s", cmd_action);
+    } else if (strcmp(cmd_action, "get-vms") == 0) {
         if (argc != 2) {
             fprintf(stderr, "Invalid usage\n");
             print_usage(argv[0]);

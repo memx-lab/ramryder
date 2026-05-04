@@ -446,6 +446,56 @@ struct memory_request *vm_mngr_instance_get_mem(int vm_id, int memdev_idx)
     return mem_req;
 }
 
+int vm_mngr_dump_state(char *buffer, int buffer_size)
+{
+    int offset = 0;
+    struct vm_instance *VM;
+    struct memory_dev *mem_dev;
+
+    if (buffer == NULL || buffer_size <= 0) {
+        return -1;
+    }
+
+    offset += snprintf(buffer + offset, buffer_size - offset,
+            "VM Count: %d\n", g_vm_mngr.count);
+    if (offset >= buffer_size) {
+        return 0;
+    }
+
+    if (g_vm_mngr.count == 0) {
+        offset += snprintf(buffer + offset, buffer_size - offset, "No VM created.\n");
+        return 0;
+    }
+
+    for (int i = 0; i < MAX_NUM_VM && offset < buffer_size; i++) {
+        VM = &g_vm_mngr.VMs[i];
+        if (!VM->initialized) {
+            continue;
+        }
+
+        offset += snprintf(buffer + offset, buffer_size - offset,
+                "VM id=%d running=%s cores=%d coreset=[%s] memdev_count=%d\n",
+                VM->vm_id, VM->running ? "yes" : "no", VM->num_cores,
+                VM->core_set, VM->memdev_counter);
+        if (offset >= buffer_size) {
+            break;
+        }
+
+        TAILQ_FOREACH(mem_dev, &VM->attached_devs, link) {
+            struct memory_request *req = &mem_dev->memory_req;
+            offset += snprintf(buffer + offset, buffer_size - offset,
+                    "  memdev=%d node=%d path=%s size=%dMB align=%dMB offset=%dMB\n",
+                    mem_dev->memdev_idx, req->node_id, req->dev_path,
+                    req->size_mb, req->align_mb, req->offset_mb);
+            if (offset >= buffer_size) {
+                break;
+            }
+        }
+    }
+
+    return 0;
+}
+
 #ifdef ENABLE_PERF
 void vm_mngr_update_perf_counters(void)
 {

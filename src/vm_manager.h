@@ -74,6 +74,7 @@ int vm_mngr_instance_alloc_mem(int node_id, int vm_id,
                         int size_mb, struct vm_mem_req *vm_mem_req);
 int vm_mngr_instance_free_mem(int vm_id, int memdev_idx);
 struct memory_request *vm_mngr_instance_get_mem(int vm_id, int memdev_idx);
+int vm_mngr_dump_state(char *buffer, int buffer_size);
 
 // VM monitor
 void vm_mngr_update_perf_counters(void);
