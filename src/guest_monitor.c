@@ -12,6 +12,7 @@
 #include "perf_counter.h"
 #include "util_common.h"
 #include "vm_manager.h"
+#include "util_log.h"
 
 // These are used by monitor thread to filter unreasonable results
 #define MAX_BW_THRESHOLD_GB 250
@@ -40,7 +41,7 @@ static int guest_monitor_load_config(const char* config_file)
 
     file = fopen(config_file, "r");
     if (!file) {
-        perror("Failed to open config file");
+        LOG_ERROR("Failed to open config file");
         return -1;
     }
 
@@ -70,10 +71,7 @@ static int guest_monitor_load_config(const char* config_file)
         }
     }
 #ifdef ENABLE_DEBUG
-    printf("Cloud DB %s, url: %s, size: %lu, token: %s, size: %lu, proxy: %s\n",
-            enable_cloud_db? "enabled" : "disabled",
-            influxdb_url, strlen(influxdb_url), influxdb_token, strlen(influxdb_token),
-            use_proxy? proxy_addr : "No");
+    LOG_DEBUG("Cloud DB %s, url: %s, size: %lu, token: %s, size: %lu, proxy: %s", enable_cloud_db? "enabled" : "disabled", influxdb_url, strlen(influxdb_url), influxdb_token, strlen(influxdb_token), use_proxy? proxy_addr : "No");
 #endif
     fclose(file);
     return 0;
@@ -85,7 +83,7 @@ static int cloud_db_client_init(void)
 
     g_curl = curl_easy_init();
     if (g_curl == NULL) {
-        perror("Failed to init curl\n");
+        LOG_ERROR("Failed to init curl");
         return -1;
     }
 
@@ -132,7 +130,7 @@ static void cloud_db_client_send(const char *data)
     curl_easy_setopt(g_curl, CURLOPT_POSTFIELDS, data);
     res = curl_easy_perform(g_curl);
     if (res != CURLE_OK) {
-        fprintf(stderr, "InfluxDB request failed: %s\n", curl_easy_strerror(res));
+        LOG_ERROR("InfluxDB request failed: %s", curl_easy_strerror(res));
     }
 }
 
@@ -143,12 +141,12 @@ static void upload_vm_cp_to_cloud_db(struct vm_instance *VM, const char *json_st
 
     parsed_json = json_tokener_parse(json_str);
     if (!json_object_object_get_ex(parsed_json, "return", &return_obj)) {
-        perror("Filed to parse json response: no return found\n");
+        LOG_ERROR("Filed to parse json response: no return found");
         return;
     }
 
     if (!json_object_object_get_ex(return_obj, "meminfo-list", &meminfo_list)) {
-        perror("Failed to parse json response: no meminfo-list found\n");
+        LOG_ERROR("Failed to parse json response: no meminfo-list found");
         return;
     }
 
@@ -216,9 +214,7 @@ static void get_sys_mem_bw_usage(memdata_t *md, core_metrics_t *core_metrics)
 #if ENABLE_DEBUG
     int max_sockets = 2;
     for (int skt_id = 0; skt_id < max_sockets; skt_id++) {
-        printf("Socket %d, Total: %lu GB/s, Read: %lu GB/s, Write: %lu GB/s\n", 
-            skt_id, MB_TO_GB(md->iMC_Rd_socket[skt_id] + md->iMC_Wr_socket[skt_id]),
-            MB_TO_GB(md->iMC_Rd_socket[skt_id]), MB_TO_GB(md->iMC_Wr_socket[skt_id]));
+        LOG_DEBUG("Socket %d, Total: %lu GB/s, Read: %lu GB/s, Write: %lu GB/s", skt_id, MB_TO_GB(md->iMC_Rd_socket[skt_id] + md->iMC_Wr_socket[skt_id]), MB_TO_GB(md->iMC_Rd_socket[skt_id]), MB_TO_GB(md->iMC_Wr_socket[skt_id]));
     }
 #endif
 }
@@ -249,9 +245,7 @@ static void __get_vm_mem_bw(struct vm_instance *VM, void *arg)
         upload_vm_bw_to_cloud_db(VM);
     }
 #ifdef ENABLE_DEBUG
-    printf("VM %i Bandwidth %lu GB/s, Local %lu GB/s, Remote %lu GB/s\n",
-            VM->vm_id, MB_TO_GB(VM->mem_bw), MB_TO_GB(VM->mem_bw_local),
-            MB_TO_GB(VM->mem_bw_remote));
+    LOG_DEBUG("VM %i Bandwidth %lu GB/s, Local %lu GB/s, Remote %lu GB/s", VM->vm_id, MB_TO_GB(VM->mem_bw), MB_TO_GB(VM->mem_bw_local), MB_TO_GB(VM->mem_bw_remote));
 #endif
 }
 
@@ -271,7 +265,7 @@ static void __get_vm_mem_cp(struct vm_instance *VM, void *arg __attribute__((unu
 
     status_json_response = guest_agent_get_meminfo(vm_id);
     if (unlikely(!status_json_response)) {
-        fprintf(stderr, "Failed to get guest memory info, VM %d\n", vm_id);
+        LOG_ERROR("Failed to get guest memory info, VM %d", vm_id);
         return;
     }
 
@@ -281,7 +275,7 @@ static void __get_vm_mem_cp(struct vm_instance *VM, void *arg __attribute__((unu
 
     // TODO: parse memory usage and fill VM
 #ifdef ENABLE_DEBUG
-    printf("%s\n", status_json_response);
+    LOG_DEBUG("%s", status_json_response);
 #endif
     free(status_json_response);
 }
@@ -299,7 +293,7 @@ static void *__monitor_loop(void *arg __attribute__((unused)))
         g_time_now_s = ts.tv_sec;
 
 #ifdef ENABLE_DEBUG
-        printf("======================================================================\n");
+        LOG_DEBUG("======================================================================");
 #endif
         /* Get whole system bandwidth including per core and channel/controller (uncore) */
         get_sys_mem_bw_usage(&md, &core_metrics);
@@ -339,24 +333,24 @@ void guest_monitor_server_stop(void)
 int guest_monitor_server_start(const char* config_file)
 {
     if (guest_monitor_load_config(config_file) != 0) {
-        fprintf(stderr, "Failed to load monitor configuration\n");
+        LOG_ERROR("Failed to load monitor configuration");
         return -1;
     }
 
     if (enable_cloud_db) {
         if (cloud_db_client_init() != 0) {
-            fprintf(stderr, "Failed to init cloud db client\n");
+            LOG_ERROR("Failed to init cloud db client");
             return -1;
         }
     }
 
     if (perf_agent_init() != 0) {
-        fprintf(stderr, "Failed to init uncore agent\n");
+        LOG_ERROR("Failed to init uncore agent");
         return -1;
     }
 
     if (pthread_create(&monitor_thread, NULL, __monitor_loop, NULL) != 0) {
-        fprintf(stderr, "Failed to create memory query thread");
+        LOG_ERROR("Failed to create memory query thread");
         return -1;
     }
 

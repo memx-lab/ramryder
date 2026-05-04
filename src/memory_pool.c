@@ -6,6 +6,7 @@
 #include "util_common.h"
 #include "memory_pool.h"
 #include "vm_manager.h"
+#include "util_log.h"
 
 #define MAX_DEVICES 10
 #define MAX_SEGMENTS 4096
@@ -74,13 +75,13 @@ static int allocate_segments(struct memory_dax_dev *mem_dev, int num_segments, i
 
     free_segments = mem_dev->total_segments - mem_dev->used_segments;
     if (free_segments < num_segments) {
-        fprintf(stderr, "No enough segments, free: %d, required: %d\n",
+        LOG_ERROR("No enough segments, free: %d, required: %d",
                 free_segments, num_segments);
     }
 
     start_index = find_free_segments(mem_dev, num_segments);
     if (start_index == -1) {
-        perror("Cannot find required size in dev\n");
+        LOG_ERROR("Cannot find required size in dev");
         return -1;
     }
 
@@ -100,7 +101,7 @@ int memory_pool_allocate_segments(int node_id, int vm_id,
     int num_segments= 0, start_index = -1;
 
     if (!is_aligned(size_mb, g_segment_size_mb)) {
-        fprintf(stderr, "Invalid size %d that should align in %dMB and be non-zero\n", 
+        LOG_ERROR("Invalid size %d that should align in %dMB and be non-zero", 
                 size_mb, g_segment_size_mb);
         return -1;
     }
@@ -113,14 +114,14 @@ int memory_pool_allocate_segments(int node_id, int vm_id,
     }
 
     if (mem_dev == NULL) {
-        fprintf(stderr, "Cannot find memory device with node id %d\n", node_id);
+        LOG_ERROR("Cannot find memory device with node id %d", node_id);
         return -1;
     }
 
     num_segments = size_mb / g_segment_size_mb;
     start_index = allocate_segments(mem_dev, num_segments, vm_id);
     if (start_index < 0) {
-        fprintf(stderr, "Filed to alllocate segments\n");
+        LOG_ERROR("Filed to alllocate segments");
         return -1;
     }
 
@@ -130,7 +131,7 @@ int memory_pool_allocate_segments(int node_id, int vm_id,
     mem_req->size_mb = num_segments * g_segment_size_mb;
     mem_req->align_mb = g_segment_size_mb;
 
-    printf("Allocated memory for VM %d, dev: %s, offset: %dMB, size: %dMB, alignment: %dMB\n",
+    LOG_INFO("Allocated memory for VM %d, dev: %s, offset: %dMB, size: %dMB, alignment: %dMB",
             vm_id, mem_req->dev_path, mem_req->offset_mb, mem_req->size_mb, mem_req->align_mb);
 
     return 0;
@@ -150,7 +151,7 @@ static int release_segments(struct memory_dax_dev *mem_dev, int vm_id,
             mem_dev->segments[idx].used_vm_id = -1;
             mem_dev->used_segments--;
         } else {
-            fprintf(stderr, "Filed to release segment, index %d, alloacted %d, vm id %d\n",
+            LOG_ERROR("Filed to release segment, index %d, alloacted %d, vm id %d",
                 idx, mem_dev->segments[idx].allocated, mem_dev->segments[idx].used_vm_id);
             return -1;
         }
@@ -167,7 +168,7 @@ int memory_pool_release_segments(int node_id, int vm_id,
     struct memory_dax_dev *mem_dev = NULL;
 
     if (!is_aligned(size_mb, g_segment_size_mb) || !is_aligned(offset_mb, g_segment_size_mb)) {
-        fprintf(stderr, "Invalid size %d or offset %d that should align in %dMB and be non-zero\n", 
+        LOG_ERROR("Invalid size %d or offset %d that should align in %dMB and be non-zero", 
                 size_mb, offset_mb, g_segment_size_mb);
         return -1;
     }
@@ -180,7 +181,7 @@ int memory_pool_release_segments(int node_id, int vm_id,
     }
 
     if (mem_dev == NULL) {
-        fprintf(stderr, "Cannot find memory device with node id %d\n", node_id);
+        LOG_ERROR("Cannot find memory device with node id %d", node_id);
         return -1;
     }
 
@@ -189,12 +190,12 @@ int memory_pool_release_segments(int node_id, int vm_id,
 
     ret = release_segments(mem_dev, vm_id, start_index, segment_count);
     if (ret < 0) {
-        fprintf(stderr, "Failed to release all segments, node id: %d, vm id: %d, offset: %dMB, size: %dMB\n",
+        LOG_ERROR("Failed to release all segments, node id: %d, vm id: %d, offset: %dMB, size: %dMB",
         node_id, vm_id, offset_mb, size_mb);
         return -1;
     }
 
-    printf("Rleased memory, dev: %s, offset: %dMB, size: %dMB\n",
+    LOG_INFO("Rleased memory, dev: %s, offset: %dMB, size: %dMB",
             mem_dev->dev_path, offset_mb, size_mb);
 
     return 0;
@@ -223,7 +224,7 @@ static int memory_pool_load_config(const char* config_file)
 
     file = fopen(config_file, "r");
     if (!file) {
-        perror("Failed to open config file");
+        LOG_ERROR("Failed to open config file");
         return -1;
     }
     
@@ -240,13 +241,13 @@ static int memory_pool_load_config(const char* config_file)
             if (strcmp(key, "segment_size_mb") == 0) {
                 g_segment_size_mb = atoi(value1);
                 if (g_segment_size_mb <= 0) {
-                    fprintf(stderr, "Invalid segment size: %d\n", g_segment_size_mb);
+                    LOG_ERROR("Invalid segment size: %d", g_segment_size_mb);
                     fclose(file);
                     return -1;
                 }
             } else if (strcmp(key, "dev") == 0) {
                 if (g_num_devs >= MAX_DEVICES) {
-                    fprintf(stderr, "Exceeded maximum number of devices\n");
+                    LOG_ERROR("Exceeded maximum number of devices");
                     fclose(file);
                     return -1;
                 }
@@ -255,17 +256,17 @@ static int memory_pool_load_config(const char* config_file)
                     sscanf(value2, "size_mb=%d", &mem_device.total_size_mb) != 1 ||
                     sscanf(value3, "tier_id=%d", &mem_device.tier_id) != 1 ||
                     sscanf(value4, "dax_id=%d", &mem_device.dax_id) != 1) {
-                    fprintf(stderr, "Invalid device entry: %s %s %s %s\n", value1, value2, value3, value4);
+                    LOG_ERROR("Invalid device entry: %s %s %s %s", value1, value2, value3, value4);
                     fclose(file);
                     return -1;
                 }
                 if (mem_device.total_size_mb <= 0) {
-                    fprintf(stderr, "Invalid device size: %d\n", mem_device.total_size_mb);
+                    LOG_ERROR("Invalid device size: %d", mem_device.total_size_mb);
                     fclose(file);
                     return -1;
                 }
                 if (mem_device.tier_id < 0 || mem_device.dax_id < 0) {
-                    fprintf(stderr, "Invalid tier id: %d or dax id: %d\n",
+                    LOG_ERROR("Invalid tier id: %d or dax id: %d",
                         mem_device.tier_id, mem_device.dax_id);
                 }
                 g_mem_devs[g_num_devs++] = mem_device;
@@ -282,7 +283,7 @@ static int init_memory_resource(const char* config_file)
 
     ret = memory_pool_load_config(config_file);
     if (ret != 0) {
-        perror("Failed to load memory configuration\n");
+        LOG_ERROR("Failed to load memory configuration");
         return -1;
     }
 
@@ -341,7 +342,7 @@ int memory_pool_init(const char* config_file)
 
     ret = init_memory_resource(config_file);
     if (ret != 0) {
-        perror("Failed to init memory resource\n");
+        LOG_ERROR("Failed to init memory resource");
         return -1;
     }
 

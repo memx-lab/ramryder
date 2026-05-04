@@ -13,14 +13,17 @@ else
 endif
 
 CFLAGS += -I$(SRC_DIR) -I$(PROJECT_ROOT)/include
+CFLAGS += -I$(PROJECT_ROOT)/third_party/zlog/src
 
-LDFLAGS = -L$(PROJECT_ROOT)/lib -lpcm_public -ljson-c -lpthread -lcurl -lm -lpfm -lstdc++
+ZLOG_LIB = $(PROJECT_ROOT)/third_party/zlog/src/libzlog.a
+LDFLAGS = -L$(PROJECT_ROOT)/lib -lpcm_public -ljson-c -lpthread -lcurl -lm -lpfm -lstdc++ $(ZLOG_LIB)
 
 SRC_FILES = \
     $(SRC_DIR)/memory_pool.c \
     $(SRC_DIR)/guest_agent.c \
     $(SRC_DIR)/guest_monitor.c \
     $(SRC_DIR)/qemu_agent.c \
+    $(SRC_DIR)/util_log.c \
     $(SRC_DIR)/util_socket.c \
     $(SRC_DIR)/vm_manager.c \
     $(SRC_DIR)/perf_counter.c

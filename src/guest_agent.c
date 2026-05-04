@@ -13,6 +13,7 @@
 #include "guest_agent.h"
 #include "util_socket.h"
 #include "vm_manager.h"
+#include "util_log.h"
 
 #define QGA_SOCKET_PREFIX "/var/run/qga-sock-"
 
@@ -41,7 +42,7 @@ int guest_agent_init(int vm_id)
     }
 
     if (g_agent_manager.count >= MAX_NUM_VM) {
-        fprintf(stderr, "Cannot create more agents (maximum is %d)\n", MAX_NUM_VM);
+        LOG_ERROR("Cannot create more agents (maximum is %d)", MAX_NUM_VM);
         return -1;
     }
 
@@ -49,7 +50,7 @@ int guest_agent_init(int vm_id)
             MAX_SOCKET_PATH, "%s%d", QGA_SOCKET_PREFIX, vm_id);
     agent_fd = connect_to_socket(g_agent_manager.guest_agents[vm_id].socket_path);
     if (agent_fd < 0) {
-        fprintf(stderr, "Failed to connect to guest agent, socket: %s\n", 
+        LOG_ERROR("Failed to connect to guest agent, socket: %s", 
                 g_agent_manager.guest_agents[vm_id].socket_path);
         return -1;
     }
@@ -59,9 +60,7 @@ int guest_agent_init(int vm_id)
     g_agent_manager.count++;
 
 #ifdef ENABLE_DEBUG
-    printf("Create agent for vm id: %d, sockect path: %s, fd: %d\n",
-            vm_id, g_agent_manager.guest_agents[vm_id].socket_path,
-            g_agent_manager.guest_agents[vm_id].agent_fd);
+    LOG_DEBUG("Create agent for vm id: %d, sockect path: %s, fd: %d", vm_id, g_agent_manager.guest_agents[vm_id].socket_path, g_agent_manager.guest_agents[vm_id].agent_fd);
 #endif
 
     return 0;
@@ -82,7 +81,7 @@ static char *send_guest_cmd(int vm_id, const char *command)
     char *response;
 
     if (!g_agent_manager.guest_agents[vm_id].initialized) {
-        fprintf(stderr, "VM agent did not init\n");
+        LOG_ERROR("VM agent did not init");
         return NULL;
     }
 

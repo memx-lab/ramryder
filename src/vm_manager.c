@@ -10,6 +10,7 @@
 #include "vm_manager.h"
 #include "guest_agent.h"
 #include "memory_pool.h"
+#include "util_log.h"
 
 struct vm_instance_manager {
     int count;
@@ -39,7 +40,7 @@ static int vm_mngr_get_new_memdev_idx(int vm_id)
 
     VM = vm_mngr_get_instance(vm_id);
     if (VM == NULL) {
-        fprintf(stderr, "Cannot find VM %d\n", vm_id);
+        LOG_ERROR("Cannot find VM %d", vm_id);
         return -1;
     }
 
@@ -207,13 +208,13 @@ int vm_mngr_instance_create(int vm_id, char *core_set)
     struct vm_instance *VM;
 
     if (g_vm_mngr.count >= MAX_NUM_VM) {
-        fprintf(stderr, "Cannot create more VMs\n");
+        LOG_ERROR("Cannot create more VMs");
         return -1;
     }
 
     // check VM existing
     if (vm_mngr_check_exit(vm_id)) {
-        fprintf(stderr, "Already created VM %d\n", vm_id);
+        LOG_ERROR("Already created VM %d", vm_id);
         return -1;
     }
 
@@ -237,7 +238,7 @@ int vm_mngr_instance_create(int vm_id, char *core_set)
 
     VM->initialized = true;
     g_vm_mngr.count++;
-    printf("VM %d created, core number: %d, coreset [%s]\n",
+    LOG_INFO("VM %d created, core number: %d, coreset [%s]",
             VM->vm_id, VM->num_cores, VM->core_set);
 
     return 0;
@@ -250,12 +251,12 @@ int vm_mngr_instance_start(int vm_id)
 
     VM = vm_mngr_get_instance(vm_id);
     if (VM == NULL) {
-        fprintf(stderr, "VM %d has not been created\n", vm_id);
+        LOG_ERROR("VM %d has not been created", vm_id);
         return -1;
     }
 
     if (VM->running) {
-        printf("VM %d is running\n", vm_id);
+        LOG_INFO("VM %d is running", vm_id);
         return 0;
     }
 
@@ -265,7 +266,7 @@ int vm_mngr_instance_start(int vm_id)
 #endif
     ret = guest_agent_init(vm_id);
     if (ret < 0) {
-        fprintf(stderr, "Failed to init guest agent for vm %d\n", vm_id);
+        LOG_ERROR("Failed to init guest agent for vm %d", vm_id);
 #ifdef ENABLE_PERF
         vm_perf_counter_teardown(VM);
 #endif
@@ -273,7 +274,7 @@ int vm_mngr_instance_start(int vm_id)
     }
 
     VM->running = true;
-    printf("VM %d starts running\n", vm_id);
+    LOG_INFO("VM %d starts running", vm_id);
 
     return 0;
 }
@@ -284,12 +285,12 @@ int vm_mngr_instance_destroy(int vm_id)
 
     VM = vm_mngr_get_instance(vm_id);
     if (VM == NULL) {
-        fprintf(stderr, "VM %d has not been created\n", vm_id);
+        LOG_ERROR("VM %d has not been created", vm_id);
         return -1;
     }
 
     if (VM->running) {
-        fprintf(stderr, "Cannot destroy running VM %d\n", vm_id);
+        LOG_ERROR("Cannot destroy running VM %d", vm_id);
         return -1;
     }
 
@@ -299,7 +300,7 @@ int vm_mngr_instance_destroy(int vm_id)
 
     VM->initialized = false;
     g_vm_mngr.count--;
-    printf("VM %d destroyed\n", vm_id);
+    LOG_INFO("VM %d destroyed", vm_id);
 
     return 0;
 }
@@ -310,12 +311,12 @@ int vm_mngr_instance_stop(int vm_id)
 
     VM = vm_mngr_get_instance(vm_id);
     if (VM == NULL) {
-        fprintf(stderr, "VM %d has not been created\n", vm_id);
+        LOG_ERROR("VM %d has not been created", vm_id);
         return -1;
     }
 
     if (!VM->running) {
-        printf("VM %d already stopped\n", vm_id);
+        LOG_INFO("VM %d already stopped", vm_id);
         return 0;
     }
 
@@ -330,7 +331,7 @@ int vm_mngr_instance_stop(int vm_id)
     vm_perf_counter_teardown(VM);
 #endif
 
-    printf("VM %d stopped\n", vm_id);
+    LOG_INFO("VM %d stopped", vm_id);
 
     return 0;
 }
@@ -345,20 +346,20 @@ int vm_mngr_instance_alloc_mem(int node_id, int vm_id,
 
     VM = vm_mngr_get_instance(vm_id);
     if (VM == NULL) {
-        fprintf(stderr, "VM %d has not been created\n", vm_id);
+        LOG_ERROR("VM %d has not been created", vm_id);
         return -1;
     }
 
     mem_dev = malloc(sizeof(*mem_dev));
     if (mem_dev == NULL) {
-        fprintf(stderr, "Filed to alllocate mem_dev\n");
+        LOG_ERROR("Filed to alllocate mem_dev");
         return -1;
     }
 
     mem_req = &mem_dev->memory_req;
     ret = memory_pool_allocate_segments(node_id, vm_id, size_mb, mem_req);
     if (ret < 0) {
-        fprintf(stderr, "Filed to alllocate memory from pool, node %d, vm %d, size %dMB\n",
+        LOG_ERROR("Filed to alllocate memory from pool, node %d, vm %d, size %dMB",
             node_id, vm_id, size_mb);
         free(mem_dev);
         return -1;
@@ -386,7 +387,7 @@ int vm_mngr_instance_free_mem(int vm_id, int memdev_idx)
 
     VM = vm_mngr_get_instance(vm_id);
     if (VM == NULL) {
-        fprintf(stderr, "VM %d has not been created\n", vm_id);
+        LOG_ERROR("VM %d has not been created", vm_id);
         return -1;
     }
 
@@ -398,7 +399,7 @@ int vm_mngr_instance_free_mem(int vm_id, int memdev_idx)
     }
 
     if (!found) {
-        fprintf(stderr, "Cannot find memdev %d\n", memdev_idx);
+        LOG_ERROR("Cannot find memdev %d", memdev_idx);
         return -1;
     }
 
@@ -406,7 +407,7 @@ int vm_mngr_instance_free_mem(int vm_id, int memdev_idx)
     ret = memory_pool_release_segments(mem_req->node_id,
                 vm_id, mem_req->offset_mb, mem_req->size_mb);
     if (ret < 0) {
-        fprintf(stderr, "Failed to release segments from pool, VM %d, memdev %d\n",
+        LOG_ERROR("Failed to release segments from pool, VM %d, memdev %d",
             vm_id, memdev_idx);
         return -1;
     }
@@ -426,7 +427,7 @@ struct memory_request *vm_mngr_instance_get_mem(int vm_id, int memdev_idx)
 
     VM = vm_mngr_get_instance(vm_id);
     if (VM == NULL) {
-        fprintf(stderr, "VM %d has not been created\n", vm_id);
+        LOG_ERROR("VM %d has not been created", vm_id);
         return NULL;
     }
 
@@ -438,7 +439,7 @@ struct memory_request *vm_mngr_instance_get_mem(int vm_id, int memdev_idx)
     }
 
     if (!mem_req) {
-        fprintf(stderr, "Cannot find memdev %d\n", memdev_idx);
+        LOG_ERROR("Cannot find memdev %d", memdev_idx);
         return NULL;
     }
 
@@ -460,7 +461,7 @@ void vm_mngr_update_perf_counters(void)
             continue;
         }
 #ifdef ENABLE_DEBUG
-    printf("###### VM %d Perf Events:\n", VM->vm_id);
+    LOG_DEBUG("###### VM %d Perf Events:", VM->vm_id);
 #endif
         for (int j = 0; j < PERF_EVENT_TYPE_MAX; ++j) {
 			uint64_t new_cum_count = 0;
@@ -474,7 +475,7 @@ void vm_mngr_update_perf_counters(void)
 			VM->delta_perf_event_counts[j] = new_cum_count - VM->cum_perf_event_counts[j];
 			VM->cum_perf_event_counts[j] = new_cum_count;
 #ifdef ENABLE_DEBUG
-            printf("Event: %-60s: %lu\n", perf_event_name_arr[j], new_cum_count);
+            LOG_DEBUG("Event: %-60s: %lu", perf_event_name_arr[j], new_cum_count);
 #endif
 		}
     }
@@ -519,9 +520,9 @@ void vm_mngr_update_metrics(int operation_window_s __attribute__((unused)))
 		VM->ewma_initialized = true;
 
 #ifdef ENABLE_DEBUG
-        printf("###### VM %d Metrics:\n", VM->vm_id);
+        LOG_DEBUG("###### VM %d Metrics:", VM->vm_id);
         for (int j = 0; j < METRIC_TYPE_MAX; ++j) {
-            printf("Metric: %-60s: %f\n", metric_name_arr[j], VM->cur_metrics[j]);
+            LOG_DEBUG("Metric: %-60s: %f", metric_name_arr[j], VM->cur_metrics[j]);
         }
 #endif
 	}

@@ -1,3 +1,6 @@
 [submodule "qemu"]
 	path = qemu
 	url = git@github.com:memx-lab/qemu.git
+[submodule "third_party/zlog"]
+	path = third_party/zlog
+	url = https://github.com/HardySimpson/zlog.git

@@ -12,6 +12,7 @@
 #include "qemu_agent.h"
 #include "util_socket.h"
 #include "util_common.h"
+#include "util_log.h"
 
 #define QMP_SOCKET_PREFIX "/var/run/qmp-sock-"
 
@@ -26,19 +27,19 @@ static int init_qemu_qmp_session(int fd)
     // Step 1: Receive initial QMP greeting
     ret = recv(fd, response, BUFFER_SIZE - 1, 0);
     if (ret <= 0) {
-        fprintf(stderr, "Failed to receive QMP greeting.\n");
+        LOG_ERROR("Failed to receive QMP greeting.");
         return -1;
     }
     response[ret] = '\0';
 #ifdef ENABLE_DEBUG
     // do not need line feed for response from qemu which already includes that
-    printf("QMP greating: %s", response);
+    LOG_DEBUG("QMP greating: %s", response);
 #endif
 
     // Step 2: Build {"execute": "qmp_capabilities"} using json-c
     cmd = json_object_new_object();
     if (!cmd) {
-        fprintf(stderr, "Failed to create JSON object.\n");
+        LOG_ERROR("Failed to create JSON object.");
         return -1;
     }
     json_object_object_add(cmd, "execute", json_object_new_string("qmp_capabilities"));
@@ -47,7 +48,7 @@ static int init_qemu_qmp_session(int fd)
     // Step 3: Send command
     ret = send(fd, cmd_str, strlen(cmd_str), 0);
     if (ret < 0) {
-        fprintf(stderr, "Failed to send qmp_capabilities command.\n");
+        LOG_ERROR("Failed to send qmp_capabilities command.");
         json_object_put(cmd);
         return -1;
     }
@@ -55,27 +56,27 @@ static int init_qemu_qmp_session(int fd)
     // Step 4: Receive response
     ret = recv(fd, response, BUFFER_SIZE - 1, 0);
     if (ret <= 0) {
-        fprintf(stderr, "Failed to receive response to qmp_capabilities.\n");
+        LOG_ERROR("Failed to receive response to qmp_capabilities.");
         json_object_put(cmd);
         return -1;
     }
     response[ret] = '\0';
 #ifdef ENABLE_DEBUG
     // do not need line feed for response from qemu which already includes that
-    printf("QMP capabilities response: %s", response);
+    LOG_DEBUG("QMP capabilities response: %s", response);
 #endif
 
     // Step 5: Parse response and check "return" key
     response_json = json_tokener_parse(response);
     if (!response_json) {
-        fprintf(stderr, "Invalid JSON received in qmp_capabilities response.\n");
+        LOG_ERROR("Invalid JSON received in qmp_capabilities response.");
         json_object_put(cmd);
         return -1;
     }
 
     // only check "return" key to get whether the command is successfully executed
     if (!json_object_object_get_ex(response_json, "return", &ret_obj)) {
-        fprintf(stderr, "QMP capabilities negotiation failed. Response: %s\n", response);
+        LOG_ERROR("QMP capabilities negotiation failed. Response: %s", response);
         json_object_put(response_json);
         json_object_put(cmd);
         return -1;
@@ -94,50 +95,50 @@ static int send_qemu_cmd(int vm_id, const char *command, char *response)
     int agent_fd = -1;
     char socket_path[MAX_SOCKET_PATH];
 
-    printf("--------------------------- start QMP process ---------------------------\n");
-    printf("Qemu agent command: %s\n", command);
+    LOG_DEBUG("--------------------------- start QMP process ---------------------------");
+    LOG_INFO("Qemu agent command: %s", command);
 
     snprintf(socket_path, MAX_SOCKET_PATH, "%s%d", QMP_SOCKET_PREFIX, vm_id);
     agent_fd = connect_to_socket(socket_path);
     if (agent_fd < 0) {
-        fprintf(stderr, "Failed to connect to qemu agent, socket: %s\n", socket_path);
+        LOG_ERROR("Failed to connect to qemu agent, socket: %s", socket_path);
         goto fail;
     }
 
     ret = init_qemu_qmp_session(agent_fd);
     if (ret < 0) {
-        fprintf(stderr, "QMP handshake failed.\n");
+        LOG_ERROR("QMP handshake failed.");
         goto fail;
     }
 
     ret = send(agent_fd, command, strlen(command), 0);
     if (ret < 0) {
-        fprintf(stderr, "Failed to send command %s, agentfd: %d\n", command, agent_fd);
+        LOG_ERROR("Failed to send command %s, agentfd: %d", command, agent_fd);
         goto fail;
     }
 
     ret = recv(agent_fd, response, BUFFER_SIZE, 0);
     if (ret <= 0) {
-        fprintf(stderr, "Failed to receive, command: %s, agentfd: %d\n", command, agent_fd);
+        LOG_ERROR("Failed to receive, command: %s, agentfd: %d", command, agent_fd);
         goto fail;
     }
     response[ret] = '\0';
 
     ret = close_sockect(agent_fd);
     if (ret < 0) {
-        fprintf(stderr, "Failed to close agentfd: %d", agent_fd);
+        LOG_ERROR("Failed to close agentfd: %d", agent_fd);
         // do not go to fail here since the response succeeded
     }
 
     // Since the response might be differernt, we let callers to check whether it is valid
-    printf("Response: %s", response);
-    printf("---------------------------- end QMP process ----------------------------\n");
+    LOG_INFO("QMP response: %s", response);
+    LOG_DEBUG("---------------------------- end QMP process ----------------------------");
     return 0;
 
 fail:
     if (agent_fd > 0)
         close_sockect(agent_fd);
-    printf("---------------------------- end QMP process ----------------------------\n");
+    LOG_DEBUG("---------------------------- end QMP process ----------------------------");
     return -1;
 }
 
@@ -147,7 +148,7 @@ static bool is_response_success(const char *response)
 
     resp_obj = json_tokener_parse(response);
     if (!resp_obj) {
-        fprintf(stderr, "Failed to parse QMP response: %s\n", response);
+        LOG_ERROR("Failed to parse QMP response: %s", response);
         return false;
     }
 
@@ -189,13 +190,13 @@ static int qemu_agent_create_object(int vm_id, struct hotplug_request *request)
     obj_add_str = json_object_to_json_string(obj_add_cmd);
     ret = send_qemu_cmd(vm_id, obj_add_str, response);
     if (ret < 0) {
-        fprintf(stderr, "Failed to create object: %s\n", obj_add_str);
+        LOG_ERROR("Failed to create object: %s", obj_add_str);
         ret = -1;
         goto out;
     }
 
     if (!is_response_success(response)) {
-        fprintf(stderr, "Failed to create object: %s", response);
+        LOG_ERROR("Failed to create object: %s", response);
         ret = -1;
         goto out;
     }
@@ -228,13 +229,13 @@ static int qemu_agent_free_object(int vm_id, struct hotunplug_request *request)
     obj_free_str = json_object_to_json_string(obj_free_cmd);
     ret = send_qemu_cmd(vm_id, obj_free_str, response);
     if (ret < 0) {
-        fprintf(stderr, "Failed to free object: %s\n", obj_free_str);
+        LOG_ERROR("Failed to free object: %s", obj_free_str);
         ret = -1;
         goto out;
     }
 
     if (!is_response_success(response)) {
-        fprintf(stderr, "Failed to free object: %s", response);
+        LOG_ERROR("Failed to free object: %s", response);
         ret = -1;
         goto out;
     }
@@ -270,13 +271,13 @@ static int qemu_agent_add_device(int vm_id, struct hotplug_request *request)
 
     ret = send_qemu_cmd(vm_id, dev_add_str, response);
      if (ret < 0) {
-        fprintf(stderr, "Failed to add device %s\n", dev_add_str);
+        LOG_ERROR("Failed to add device %s", dev_add_str);
         ret = -1;
         goto out;
     }
 
     if (!is_response_success(response)) {
-        fprintf(stderr, "Failed to add devuce: %s", response);
+        LOG_ERROR("Failed to add devuce: %s", response);
         ret = -1;
         goto out;
     }
@@ -310,13 +311,13 @@ static int qemu_agent_del_device(int vm_id, struct hotunplug_request *request)
 
     ret = send_qemu_cmd(vm_id, dev_del_str, response);
      if (ret < 0) {
-        fprintf(stderr, "Failed to delete device %s\n", dev_del_str);
+        LOG_ERROR("Failed to delete device %s", dev_del_str);
         ret = -1;
         goto out;
     }
 
     if (!is_response_success(response)) {
-        fprintf(stderr, "Failed to add devuce: %s", response);
+        LOG_ERROR("Failed to add devuce: %s", response);
         ret = -1;
         goto out;
     }
@@ -338,14 +339,14 @@ int qemu_agent_hotplug_memory(int vm_id, struct hotplug_request *request)
     // Step 1: we need to create a memory object before attaching to VMs
     ret = qemu_agent_create_object(vm_id, request);
     if (ret < 0) {
-        fprintf(stderr, "Failed to hotplug memory to VM %d\n", vm_id);
+        LOG_ERROR("Failed to hotplug memory to VM %d", vm_id);
         return -1;
     }
 
     // Step 2: hot-plug memory device
     ret = qemu_agent_add_device(vm_id, request);
     if (ret < 0) {
-        fprintf(stderr, "Failed to hotplug memory to VM %d\n", vm_id);
+        LOG_ERROR("Failed to hotplug memory to VM %d", vm_id);
         return -1;
     }
 
@@ -359,7 +360,7 @@ int qemu_agent_hotunplug_memory(int vm_id, struct hotunplug_request *request)
     // Step 1: hot-unplug memory device from VM
     ret = qemu_agent_del_device(vm_id, request);
     if (ret < 0) {
-        fprintf(stderr, "Failed to hotunplug memory from VM %d\n", vm_id);
+        LOG_ERROR("Failed to hotunplug memory from VM %d", vm_id);
         return -1;
     }
 
@@ -369,7 +370,7 @@ int qemu_agent_hotunplug_memory(int vm_id, struct hotunplug_request *request)
     // Step 3: detele memory object
     ret = qemu_agent_free_object(vm_id, request);
     if (ret < 0) {
-        fprintf(stderr, "Failed to hotunplug memory from VM %d\n", vm_id);
+        LOG_ERROR("Failed to hotunplug memory from VM %d", vm_id);
         return -1;
     }
 

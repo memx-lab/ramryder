@@ -14,8 +14,10 @@
 #include "guest_monitor.h"
 #include "vm_manager.h"
 #include "util_common.h"
+#include "util_log.h"
 
 #define CONFIG_FILE "elasticmm.conf"
+#define LOG_CONFIG_FILE "zlog.conf"
 #define SERVER_SOCKET "/var/run/resource_manager.sock"
 #define MAX_EVENTS 10
 
@@ -328,7 +330,7 @@ static void rpc_server_start(void)
 
     g_server_fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (g_server_fd < 0) {
-        perror("Server socket creation failed");
+        LOG_ERROR("Server socket creation failed");
         exit(EXIT_FAILURE);
     }
 
@@ -338,29 +340,29 @@ static void rpc_server_start(void)
     unlink(SERVER_SOCKET);
 
     if (bind(g_server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-        perror("Server bind failed");
+        LOG_ERROR("Server bind failed");
         exit(EXIT_FAILURE);
     }
 
     if (listen(g_server_fd, 5) < 0) {
-        perror("Server listen failed");
+        LOG_ERROR("Server listen failed");
         exit(EXIT_FAILURE);
     }
 
     g_epoll_fd = epoll_create1(0);
     if (g_epoll_fd == -1) {
-        perror("epoll_create1 failed");
+        LOG_ERROR("epoll_create1 failed");
         exit(EXIT_FAILURE);
     }
 
     event.events = EPOLLIN;
     event.data.fd = g_server_fd;
     if (epoll_ctl(g_epoll_fd, EPOLL_CTL_ADD, g_server_fd, &event) == -1) {
-        perror("epoll_ctl failed");
+        LOG_ERROR("epoll_ctl failed");
         exit(EXIT_FAILURE);
     }
 
-    printf("Resource Manager RPC Server started. Waiting for client requests...\n");
+    LOG_INFO("Resource Manager RPC Server started. Waiting for client requests...");
 
     while (1) {
         num_events = epoll_wait(g_epoll_fd, events, MAX_EVENTS, -1);
@@ -370,13 +372,13 @@ static void rpc_server_start(void)
                 socklen_t client_len = sizeof(client_addr);
                 int client_fd = accept(g_server_fd, (struct sockaddr *)&client_addr, &client_len);
                 if (client_fd < 0) {
-                    perror("Client accept failed");
+                    LOG_ERROR("Client accept failed");
                     continue;
                 }
 
                 memset(buffer, 0, BUFFER_SIZE);
                 recv(client_fd, buffer, BUFFER_SIZE, 0);
-                printf("Received command: %s\n", buffer);
+                LOG_INFO("Received command: %s", buffer);
                 if (sscanf(buffer, "%63s %[^\n]", cmd, args) < 1) {
                     response = strdup("Invalid command");
                     goto end;
@@ -436,7 +438,7 @@ static void __vm_stop(struct vm_instance *VM, void *arg __attribute__((unused)))
 
 static void handle_signal(int signum __attribute__((unused)))
 {
-    printf("\nResource Manager shutting down...\n");
+    LOG_INFO("Resource Manager shutting down...");
 
     rpc_server_stop();
     guest_monitor_server_stop();
@@ -444,11 +446,16 @@ static void handle_signal(int signum __attribute__((unused)))
     vm_mngr_for_each_vm_running(__vm_stop, NULL);
     // destroy all created VMs
     vm_mngr_for_each_vm(__vm_destroy, NULL);
+    rm_log_fini();
     exit(0);
 }
 
 int main()
 {
+    if (rm_log_init(LOG_CONFIG_FILE) != 0) {
+        exit(EXIT_FAILURE);
+    }
+
     signal(SIGINT, handle_signal);
 
     if (memory_pool_init(CONFIG_FILE) != 0) {
@@ -462,6 +469,7 @@ int main()
 #endif
 
     rpc_server_start();
+    rm_log_fini();
 
     return 0;
 }
