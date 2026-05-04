@@ -14,9 +14,10 @@ endif
 
 CFLAGS += -I$(SRC_DIR) -I$(PROJECT_ROOT)/include
 CFLAGS += -I$(PROJECT_ROOT)/third_party/zlog/src
+CFLAGS += -I$(PROJECT_ROOT)/third_party/pcm/include
 
 ZLOG_LIB = $(PROJECT_ROOT)/third_party/zlog/src/libzlog.a
-LDFLAGS = -L$(PROJECT_ROOT)/lib -lpcm_public -ljson-c -lpthread -lcurl -lm -lpfm -lstdc++ $(ZLOG_LIB)
+LDFLAGS = -L$(PROJECT_ROOT)/third_party/pcm/lib -lpcm_public -ljson-c -lpthread -lcurl -lm -lpfm -lstdc++ $(ZLOG_LIB)
 
 SRC_FILES = \
     $(SRC_DIR)/memory_pool.c \

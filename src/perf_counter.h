@@ -12,7 +12,7 @@
 #include <sys/syscall.h>
 #include <sys/stat.h>
 #include <linux/perf_event.h>
-#include <pcm/pcm_c_public.h>
+#include <pcm_c_public.h>
 
 enum PerfEventType {
 	// basic counters

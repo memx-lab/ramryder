@@ -17,10 +17,11 @@ endif
 
 CFLAGS += -I$(PROJECT_ROOT)/include
 CFLAGS += -I$(PROJECT_ROOT)/third_party/zlog/src
+CFLAGS += -I$(PROJECT_ROOT)/third_party/pcm/include
 
 ZLOG_LIB = $(PROJECT_ROOT)/third_party/zlog/src/libzlog.a
 
-LDFLAGS = -L$(PROJECT_ROOT)/lib -lpcm_public -ljson-c -lpthread -lcurl -lm -lstdc++ $(ZLOG_LIB)
+LDFLAGS = -L$(PROJECT_ROOT)/third_party/pcm/lib -lpcm_public -ljson-c -lpthread -lcurl -lm -lstdc++ $(ZLOG_LIB)
 TARGETS = resource_manager resource_client
 SRC_MANAGER = resource_manager.c memory_pool.c guest_agent.c guest_monitor.c qemu_agent.c util_socket.c vm_manager.c perf_counter.c util_log.c
 SRC_CLIENT = resource_client.c
