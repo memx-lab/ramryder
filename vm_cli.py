@@ -174,7 +174,7 @@ def get_mem_pool_nodes(rpc_client: str) -> List[MemPoolNode]:
 
 def build_paths() -> Tuple[str, str, str]:
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(script_dir)
+    project_root = script_dir
     qemu_bin = os.path.join(project_root, "qemu", "build", "qemu-system-x86_64")
     rpc_client = os.path.join(project_root, "src", "resource_client")
     default_img = os.path.join(os.path.expanduser("~"), "images", "nvcloud-image-clean.qcow2")
