@@ -9,3 +9,5 @@ src/elasticmm.conf
 test/test_perf_event
 test/test_memory_pool
 test/elasticmm.conf
+__pycache__/
+*.pyc
