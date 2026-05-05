@@ -9,7 +9,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 BASE_PORT = 2806
 VM_NAME_PREFIX = "RAMRYDER-VM"
@@ -19,11 +19,19 @@ VM_NAME_PREFIX = "RAMRYDER-VM"
 class VmConfig:
     memory_mb: int
     channels: int
+    cxl_memory_mb: int
+    cxl_channels: int
     cpu_set: str
     image: str
     hostfwd_port: int
     disable_vcpu_pin: bool
     dry_run: bool
+
+
+@dataclass
+class MemPoolNode:
+    node_id: int
+    tier_id: int
 
 
 def parse_memory_to_mb(raw: str) -> int:
@@ -57,6 +65,24 @@ def parse_cpu_set(cpu_set: str) -> List[int]:
     if not cpus:
         raise ValueError("cpu-set resolves to empty CPU list")
     return sorted(cpus)
+
+
+def expand_cpu_list(cpu_set: str) -> List[int]:
+    cpus: List[int] = []
+    for part in cpu_set.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "-" in part:
+            start_s, end_s = part.split("-", 1)
+            start = int(start_s)
+            end = int(end_s)
+            if end < start:
+                raise ValueError(f"Invalid CPU range: {part}")
+            cpus.extend(range(start, end + 1))
+        else:
+            cpus.append(int(part))
+    return cpus
 
 
 def split_memory(total_mb: int, channels: int) -> List[int]:
@@ -124,15 +150,26 @@ def get_used_vm_ids(rpc_client: str) -> List[int]:
     return sorted(used)
 
 
-def get_num_nodes(rpc_client: str) -> int:
-    output = run_cmd_capture(["sudo", rpc_client, "get-num-nodes"]).strip()
-    try:
-        num_nodes = int(output)
-    except ValueError as exc:
-        raise RuntimeError(f"failed to parse get-num-nodes output: {output}") from exc
-    if num_nodes <= 0:
-        raise RuntimeError(f"invalid node count from resource manager: {num_nodes}")
-    return num_nodes
+def get_mem_pool_nodes(rpc_client: str) -> List[MemPoolNode]:
+    output = run_cmd_capture(["sudo", rpc_client, "get-mem-pool"])
+    nodes: List[MemPoolNode] = []
+    for raw in output.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("Index"):
+            continue
+        parts = [p.strip() for p in line.split("|")]
+        if len(parts) < 9:
+            continue
+        try:
+            node_id = int(parts[6])
+            tier_id = int(parts[7])
+        except ValueError:
+            continue
+        nodes.append(MemPoolNode(node_id=node_id, tier_id=tier_id))
+    if not nodes:
+        raise RuntimeError("failed to parse nodes from get-mem-pool output")
+    nodes.sort(key=lambda n: n.node_id)
+    return nodes
 
 
 def build_paths() -> Tuple[str, str, str]:
@@ -144,30 +181,8 @@ def build_paths() -> Tuple[str, str, str]:
     return qemu_bin, rpc_client, default_img
 
 
-def expand_cpu_list(cpu_set: str) -> List[int]:
-    cpus: List[int] = []
-    for part in cpu_set.split(","):
-        part = part.strip()
-        if not part:
-            continue
-        if "-" in part:
-            start_s, end_s = part.split("-", 1)
-            start = int(start_s)
-            end = int(end_s)
-            if end < start:
-                raise ValueError(f"Invalid CPU range: {part}")
-            for cpu in range(start, end + 1):
-                cpus.append(cpu)
-        else:
-            cpus.append(int(part))
-    return cpus
-
-
 def get_vcpu_threads_from_qmp(qmp_sock: str) -> List[Tuple[int, int]]:
-    payload = (
-        '{"execute":"qmp_capabilities"}\n'
-        '{"execute":"query-cpus-fast"}\n'
-    )
+    payload = '{"execute":"qmp_capabilities"}\n{"execute":"query-cpus-fast"}\n'
     proc = subprocess.run(
         ["sudo", "nc", "-U", "-q", "1", qmp_sock],
         input=payload,
@@ -203,12 +218,10 @@ def pin_qemu_vcpus(vmid: int, cpu_set: str) -> None:
     qmp_sock = f"/var/run/qmp-sock-{vmid}"
     host_cpus = expand_cpu_list(cpu_set)
     vcpu_threads = get_vcpu_threads_from_qmp(qmp_sock)
-
     if len(host_cpus) < len(vcpu_threads):
         raise RuntimeError(
             f"Not enough host CPUs for pinning: got {len(host_cpus)}, need {len(vcpu_threads)}"
         )
-
     for i, (_vcpu, tid) in enumerate(vcpu_threads):
         cpu = host_cpus[i]
         subprocess.run(
@@ -221,7 +234,7 @@ def pin_qemu_vcpus(vmid: int, cpu_set: str) -> None:
 
 def wait_for_vm_ready(vmid: int, qemu_pid: int, ssh_port: int, timeout_s: int = 120) -> None:
     deadline = time.time() + timeout_s
-    print(f"[info] waiting for VM ready...")
+    print("[info] waiting for VM ready...")
     while time.time() < deadline:
         try:
             os.kill(qemu_pid, 0)
@@ -259,12 +272,14 @@ def build_parser(default_img: str) -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     create_parser = subparsers.add_parser("create-vm", help="Create and launch a VM")
-    create_parser.add_argument("--memory", required=True, help="Total memory (MB or with suffix like 150G)")
-    create_parser.add_argument("--channels", required=True, type=int, help="Number of channels to allocate")
     create_parser.add_argument("--cpu-set", required=True, help="Host CPU set, e.g. 0-9,20-29")
+    create_parser.add_argument("--memory", required=True, help="Local memory (DIMM) in MB or GB (e.g. 153600M, 150G)")
+    create_parser.add_argument("--channels", required=True, type=int, help="DIMM channel count")
+    create_parser.add_argument("--cxl-memory", help="CXL memory in MB or GB (e.g. 51200M, 50G)")
+    create_parser.add_argument("--cxl-channels", type=int, help="CXL channel count")
     create_parser.add_argument("--image", default=default_img, help="VM image path")
-    create_parser.add_argument("--hostfwd-port", type=int, help="Host forwarded SSH port (default: base port (2806) + VMID)")
-    create_parser.add_argument("--disable-vcpu-pin", action="store_true", help="Disable vCPU pinning after VM startup")
+    create_parser.add_argument("--hostfwd-port", type=int, help="Host forwarded SSH port (default: base port + VMID)")
+    create_parser.add_argument("--disable-vcpu-pin", action="store_true", help="Disable vCPU pinning")
     create_parser.add_argument("--dry-run", action="store_true", help="Execute RPC steps but do not launch final QEMU process")
 
     destroy_parser = subparsers.add_parser("destroy-vm", help="Destroy a VM and release resources")
@@ -278,7 +293,6 @@ def select_vmid(rpc_client: str) -> int:
         print(f"[info] existing vm ids: {','.join(str(v) for v in existing_vmids)}")
     else:
         print("[info] existing vm ids: (none detected)")
-
     used = set(existing_vmids)
     vmid = 0
     while vmid in used:
@@ -289,16 +303,26 @@ def select_vmid(rpc_client: str) -> int:
 def select_hostfwd_port(requested: int, vmid: int) -> int:
     if requested is not None:
         return requested
-
     port = BASE_PORT + vmid
     if not is_tcp_port_in_use(port):
         return port
-
     for _ in range(128):
         candidate = port + random.randint(1, 2000)
         if not is_tcp_port_in_use(candidate):
             return candidate
     raise RuntimeError("failed to find a free hostfwd port")
+
+
+def choose_nodes_for_tier(
+    nodes: List[MemPoolNode], tier_id: int, channels: int, memory_name: str
+) -> List[int]:
+    candidates = [n.node_id for n in nodes if n.tier_id == tier_id]
+    candidates.sort()
+    if channels > len(candidates):
+        raise ValueError(
+            f"{memory_name} channels ({channels}) must be <= available channels ({len(candidates)})"
+        )
+    return candidates[:channels]
 
 
 def build_qemu_cmd(
@@ -309,22 +333,19 @@ def build_qemu_cmd(
     node0_vcpu_range: str,
     hostfwd_port: int,
     rpc_client: str,
-    total_nodes: int,
+    all_node_ids: List[int],
+    allocations: List[Tuple[int, int]],
 ) -> List[str]:
     name = f"{VM_NAME_PREFIX}-{vmid}"
     sock_path = "/var/run"
     qmp_sock = f"{sock_path}/qmp-sock-{vmid}"
     qga_sock = f"{sock_path}/qga-sock-{vmid}"
 
-    per_channel_mb = split_memory(cfg.memory_mb, cfg.channels)
-    selected_nodes = list(range(cfg.channels))
-    all_nodes = list(range(total_nodes))
-
     mem_args: List[str] = []
     node_args: List[str] = []
 
-    for mem_idx, node_id in enumerate(selected_nodes):
-        size_mb = per_channel_mb[mem_idx]
+    node_to_memidx: Dict[int, int] = {}
+    for mem_idx, (node_id, size_mb) in enumerate(allocations):
         out = run_cmd(
             ["sudo", rpc_client, "alloc-mem", f"nid={node_id}", f"vid={vmid}", f"size={size_mb}"],
             False,
@@ -332,21 +353,24 @@ def build_qemu_cmd(
         if not out:
             raise RuntimeError("alloc-mem returned empty output; cannot build memdev argument")
         mem_args.append(f"-object memory-backend-file,share=on,{out}")
+        node_to_memidx[node_id] = mem_idx
 
-    for node_id in all_nodes:
+    first_mem_node = allocations[0][0] if allocations else None
+    for node_id in all_node_ids:
         out = run_cmd(["sudo", rpc_client, "get-node-info", f"nid={node_id}"], False)
         if not out:
             raise RuntimeError("get-node-info returned empty output; cannot build numa node argument")
         base = f"-numa node,{out},seg-id=0"
-        if node_id < cfg.channels:
-            mem_idx = node_id
-            if mem_idx == 0:
+        if node_id in node_to_memidx:
+            mem_idx = node_to_memidx[node_id]
+            if node_id == first_mem_node:
                 node_args.append(f"{base},memdev=mem{mem_idx},cpus={node0_vcpu_range}")
             else:
                 node_args.append(f"{base},memdev=mem{mem_idx}")
         else:
             node_args.append(base)
 
+    total_memory_mb = cfg.memory_mb + cfg.cxl_memory_mb
     qemu_cmd: List[str] = [
         "sudo",
         "taskset",
@@ -361,7 +385,7 @@ def build_qemu_cmd(
         "-smp",
         str(smp),
         "-m",
-        to_m_arg(cfg.memory_mb),
+        to_m_arg(total_memory_mb),
     ]
 
     for item in mem_args:
@@ -398,24 +422,12 @@ def build_qemu_cmd(
 def handle_destroy_vm(args: argparse.Namespace, rpc_client: str) -> int:
     vmid = args.vmid
     pids = find_qemu_pids_by_vmid(vmid)
-
     for pid in pids:
-        subprocess.run(
-            ["sudo", "kill", "-15", str(pid)],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-
+        subprocess.run(["sudo", "kill", "-15", str(pid)], check=False, capture_output=True, text=True)
     if pids:
         time.sleep(1.0)
         for pid in find_qemu_pids_by_vmid(vmid):
-            subprocess.run(
-                ["sudo", "kill", "-9", str(pid)],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
+            subprocess.run(["sudo", "kill", "-9", str(pid)], check=False, capture_output=True, text=True)
 
     destroy_cmd = ["sudo", rpc_client, "destroy-vm", f"vid={vmid}"]
     print(f"[cmd] {' '.join(shlex.quote(x) for x in destroy_cmd)}")
@@ -427,14 +439,26 @@ def handle_destroy_vm(args: argparse.Namespace, rpc_client: str) -> int:
     return 0
 
 
-def handle_create_vm(
-    args: argparse.Namespace, qemu_bin: str, rpc_client: str
-) -> int:
+def handle_create_vm(args: argparse.Namespace, qemu_bin: str, rpc_client: str) -> int:
+    if args.cxl_memory is None and args.cxl_channels is not None:
+        raise ValueError("--cxl-memory is required when --cxl-channels is set")
+    if args.cxl_memory is not None and args.cxl_channels is None:
+        raise ValueError("--cxl-channels is required when --cxl-memory is set")
+
     memory_mb = parse_memory_to_mb(args.memory)
+    cxl_memory_mb = parse_memory_to_mb(args.cxl_memory) if args.cxl_memory else 0
+    cxl_channels = args.cxl_channels if args.cxl_channels is not None else 0
+
     if args.channels <= 0:
         raise ValueError("--channels must be > 0")
     if memory_mb < args.channels:
-        raise ValueError("Total memory is too small for channel split")
+        raise ValueError("local memory (DIMM) --memory is too small for --channels")
+    if cxl_channels < 0:
+        raise ValueError("--cxl-channels must be >= 0")
+    if cxl_channels == 0 and cxl_memory_mb > 0:
+        raise ValueError("--cxl-memory requires --cxl-channels > 0")
+    if cxl_channels > 0 and cxl_memory_mb < cxl_channels:
+        raise ValueError("CXL memory --cxl-memory is too small for --cxl-channels")
 
     cpus = parse_cpu_set(args.cpu_set)
     smp = len(cpus)
@@ -443,6 +467,8 @@ def handle_create_vm(
     cfg = VmConfig(
         memory_mb=memory_mb,
         channels=args.channels,
+        cxl_memory_mb=cxl_memory_mb,
+        cxl_channels=cxl_channels,
         cpu_set=args.cpu_set,
         image=args.image,
         hostfwd_port=args.hostfwd_port,
@@ -450,12 +476,23 @@ def handle_create_vm(
         dry_run=args.dry_run,
     )
 
-    total_nodes = get_num_nodes(rpc_client)
-    print(f"[info] total available nodes (channels): {total_nodes}")
-    if cfg.channels > total_nodes:
-        raise ValueError(
-            f"--channels ({cfg.channels}) must be <= managed node count ({total_nodes})"
-        )
+    pool_nodes = get_mem_pool_nodes(rpc_client)
+    all_node_ids = sorted({n.node_id for n in pool_nodes})
+    tier0_node_ids = choose_nodes_for_tier(pool_nodes, 0, cfg.channels, "local memory (DIMM)")
+    tier1_node_ids = choose_nodes_for_tier(pool_nodes, 1, cfg.cxl_channels, "CXL memory") if cfg.cxl_channels > 0 else []
+
+    tier0_total_available = sum(1 for n in pool_nodes if n.tier_id == 0)
+    tier1_total_available = sum(1 for n in pool_nodes if n.tier_id == 1)
+    print(f"[info] total available channels: {len(all_node_ids)}")
+    print(f"[info] local memory (DIMM) channels: {tier0_total_available}")
+    print(f"[info] CXL memory channels: {tier1_total_available}")
+
+    allocations: List[Tuple[int, int]] = []
+    for node_id, size_mb in zip(tier0_node_ids, split_memory(cfg.memory_mb, cfg.channels)):
+        allocations.append((node_id, size_mb))
+    if cfg.cxl_channels > 0:
+        for node_id, size_mb in zip(tier1_node_ids, split_memory(cfg.cxl_memory_mb, cfg.cxl_channels)):
+            allocations.append((node_id, size_mb))
 
     vmid = select_vmid(rpc_client)
     create_cmd = ["sudo", rpc_client, "create-vm", f"vid={vmid}", f"coreset=[{cfg.cpu_set}]"]
@@ -477,11 +514,12 @@ def handle_create_vm(
             cfg=cfg,
             vmid=vmid,
             smp=smp,
-        node0_vcpu_range=node0_vcpu_range,
-        hostfwd_port=hostfwd_port,
-        rpc_client=rpc_client,
-        total_nodes=total_nodes,
-    )
+            node0_vcpu_range=node0_vcpu_range,
+            hostfwd_port=hostfwd_port,
+            rpc_client=rpc_client,
+            all_node_ids=all_node_ids,
+            allocations=allocations,
+        )
 
         if cfg.dry_run:
             run_cmd(qemu_cmd, True)
