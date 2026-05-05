@@ -340,20 +340,20 @@ def handle_create_vm(args: argparse.Namespace, qemu_bin: str, rpc_client: str) -
     hostfwd_port = select_hostfwd_port(cfg.hostfwd_port, vmid)
     print(f"[info] hostfwd port: {hostfwd_port}")
 
-    qemu_cmd = build_qemu_cmd(
-        qemu_bin=qemu_bin,
-        cfg=cfg,
-        vmid=vmid,
-        smp=smp,
-        node0_vcpu_range=node0_vcpu_range,
-        hostfwd_port=hostfwd_port,
-        rpc_client=rpc_client,
-    )
-
-    log_path = f"/tmp/ramryder-vm-{vmid}.log"
     qemu_started = False
+    log_path = f"/tmp/ramryder-vm-{vmid}.log"
 
     try:
+        qemu_cmd = build_qemu_cmd(
+            qemu_bin=qemu_bin,
+            cfg=cfg,
+            vmid=vmid,
+            smp=smp,
+            node0_vcpu_range=node0_vcpu_range,
+            hostfwd_port=hostfwd_port,
+            rpc_client=rpc_client,
+        )
+
         if cfg.dry_run:
             run_cmd(qemu_cmd, True)
         else:
