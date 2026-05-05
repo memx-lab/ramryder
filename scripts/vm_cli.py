@@ -122,6 +122,17 @@ def get_used_vm_ids(rpc_client: str) -> List[int]:
     return sorted(used)
 
 
+def get_num_nodes(rpc_client: str) -> int:
+    output = run_cmd_capture(["sudo", rpc_client, "get-num-nodes"]).strip()
+    try:
+        num_nodes = int(output)
+    except ValueError as exc:
+        raise RuntimeError(f"failed to parse get-num-nodes output: {output}") from exc
+    if num_nodes <= 0:
+        raise RuntimeError(f"invalid node count from resource manager: {num_nodes}")
+    return num_nodes
+
+
 def build_paths() -> Tuple[str, str, str]:
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(script_dir)
@@ -201,6 +212,7 @@ def build_qemu_cmd(
     node0_vcpu_range: str,
     hostfwd_port: int,
     rpc_client: str,
+    total_nodes: int,
 ) -> List[str]:
     name = f"{VM_NAME_PREFIX}-{vmid}"
     sock_path = "/var/run"
@@ -209,6 +221,7 @@ def build_qemu_cmd(
 
     per_channel_mb = split_memory(cfg.memory_mb, cfg.channels)
     selected_nodes = list(range(cfg.channels))
+    all_nodes = list(range(total_nodes))
 
     mem_args: List[str] = []
     node_args: List[str] = []
@@ -223,15 +236,19 @@ def build_qemu_cmd(
             raise RuntimeError("alloc-mem returned empty output; cannot build memdev argument")
         mem_args.append(f"-object memory-backend-file,share=on,{out}")
 
-    for mem_idx, node_id in enumerate(selected_nodes):
+    for node_id in all_nodes:
         out = run_cmd(["sudo", rpc_client, "get-node-info", f"nid={node_id}"], False)
         if not out:
             raise RuntimeError("get-node-info returned empty output; cannot build numa node argument")
         base = f"-numa node,{out},seg-id=0"
-        if mem_idx == 0:
-            node_args.append(f"{base},memdev=mem{mem_idx},cpus={node0_vcpu_range}")
+        if node_id < cfg.channels:
+            mem_idx = node_id
+            if mem_idx == 0:
+                node_args.append(f"{base},memdev=mem{mem_idx},cpus={node0_vcpu_range}")
+            else:
+                node_args.append(f"{base},memdev=mem{mem_idx}")
         else:
-            node_args.append(f"{base},memdev=mem{mem_idx}")
+            node_args.append(base)
 
     qemu_cmd: List[str] = [
         "sudo",
@@ -329,6 +346,13 @@ def handle_create_vm(args: argparse.Namespace, qemu_bin: str, rpc_client: str) -
         dry_run=args.dry_run,
     )
 
+    total_nodes = get_num_nodes(rpc_client)
+    print(f"[info] total available nodes (channels): {total_nodes}")
+    if cfg.channels > total_nodes:
+        raise ValueError(
+            f"--channels ({cfg.channels}) must be <= managed node count ({total_nodes})"
+        )
+
     vmid = select_vmid(rpc_client)
     create_cmd = ["sudo", rpc_client, "create-vm", f"vid={vmid}", f"coreset=[{cfg.cpu_set}]"]
     print(f"[cmd] {' '.join(shlex.quote(x) for x in create_cmd)}")
@@ -349,10 +373,11 @@ def handle_create_vm(args: argparse.Namespace, qemu_bin: str, rpc_client: str) -
             cfg=cfg,
             vmid=vmid,
             smp=smp,
-            node0_vcpu_range=node0_vcpu_range,
-            hostfwd_port=hostfwd_port,
-            rpc_client=rpc_client,
-        )
+        node0_vcpu_range=node0_vcpu_range,
+        hostfwd_port=hostfwd_port,
+        rpc_client=rpc_client,
+        total_nodes=total_nodes,
+    )
 
         if cfg.dry_run:
             run_cmd(qemu_cmd, True)
