@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import json
 import os
 import random
 import shlex
@@ -21,6 +22,7 @@ class VmConfig:
     cpu_set: str
     image: str
     hostfwd_port: int
+    disable_vcpu_pin: bool
     dry_run: bool
 
 
@@ -142,6 +144,100 @@ def build_paths() -> Tuple[str, str, str]:
     return qemu_bin, rpc_client, default_img
 
 
+def expand_cpu_list(cpu_set: str) -> List[int]:
+    cpus: List[int] = []
+    for part in cpu_set.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "-" in part:
+            start_s, end_s = part.split("-", 1)
+            start = int(start_s)
+            end = int(end_s)
+            if end < start:
+                raise ValueError(f"Invalid CPU range: {part}")
+            for cpu in range(start, end + 1):
+                cpus.append(cpu)
+        else:
+            cpus.append(int(part))
+    return cpus
+
+
+def get_vcpu_threads_from_qmp(qmp_sock: str) -> List[Tuple[int, int]]:
+    payload = (
+        '{"execute":"qmp_capabilities"}\n'
+        '{"execute":"query-cpus-fast"}\n'
+    )
+    proc = subprocess.run(
+        ["sudo", "nc", "-U", "-q", "1", qmp_sock],
+        input=payload,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        err = (proc.stderr or "").strip()
+        raise RuntimeError(f"QMP query failed: {err or proc.returncode}")
+
+    rows: List[Tuple[int, int]] = []
+    for line in (proc.stdout or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            msg = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if "return" in msg and isinstance(msg["return"], list):
+            for item in msg["return"]:
+                rows.append((int(item["cpu-index"]), int(item["thread-id"])))
+            break
+
+    if not rows:
+        raise RuntimeError("Could not read vCPU thread IDs from QMP")
+    rows.sort(key=lambda x: x[0])
+    return rows
+
+
+def pin_qemu_vcpus(vmid: int, cpu_set: str) -> None:
+    qmp_sock = f"/var/run/qmp-sock-{vmid}"
+    host_cpus = expand_cpu_list(cpu_set)
+    vcpu_threads = get_vcpu_threads_from_qmp(qmp_sock)
+
+    if len(host_cpus) < len(vcpu_threads):
+        raise RuntimeError(
+            f"Not enough host CPUs for pinning: got {len(host_cpus)}, need {len(vcpu_threads)}"
+        )
+
+    for i, (_vcpu, tid) in enumerate(vcpu_threads):
+        cpu = host_cpus[i]
+        subprocess.run(
+            ["sudo", "taskset", "-pc", str(cpu), str(tid)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+
+def wait_for_vm_ready(vmid: int, qemu_pid: int, ssh_port: int, timeout_s: int = 120) -> None:
+    deadline = time.time() + timeout_s
+    print(f"[info] waiting for VM ready...")
+    while time.time() < deadline:
+        try:
+            os.kill(qemu_pid, 0)
+            with socket.create_connection(("127.0.0.1", ssh_port), timeout=1.0) as sock:
+                sock.settimeout(1.0)
+                banner = sock.recv(64)
+                if banner.startswith(b"SSH-"):
+                    return
+        except Exception:
+            time.sleep(1.0)
+    raise RuntimeError(
+        f"[info] timeout: VM did not become ready within {timeout_s}s "
+        f"(vmid={vmid}, port={ssh_port})"
+    )
+
+
 def to_m_arg(memory_mb: int) -> str:
     if memory_mb % 1024 == 0:
         return f"{memory_mb // 1024}G"
@@ -168,6 +264,7 @@ def build_parser(default_img: str) -> argparse.ArgumentParser:
     create_parser.add_argument("--cpu-set", required=True, help="Host CPU set, e.g. 0-9,20-29")
     create_parser.add_argument("--image", default=default_img, help="VM image path")
     create_parser.add_argument("--hostfwd-port", type=int, help="Host forwarded SSH port (default: base port (2806) + VMID)")
+    create_parser.add_argument("--disable-vcpu-pin", action="store_true", help="Disable vCPU pinning after VM startup")
     create_parser.add_argument("--dry-run", action="store_true", help="Execute RPC steps but do not launch final QEMU process")
 
     destroy_parser = subparsers.add_parser("destroy-vm", help="Destroy a VM and release resources")
@@ -303,18 +400,22 @@ def handle_destroy_vm(args: argparse.Namespace, rpc_client: str) -> int:
     pids = find_qemu_pids_by_vmid(vmid)
 
     for pid in pids:
-        try:
-            os.kill(pid, 15)
-        except ProcessLookupError:
-            continue
+        subprocess.run(
+            ["sudo", "kill", "-15", str(pid)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
 
     if pids:
         time.sleep(1.0)
         for pid in find_qemu_pids_by_vmid(vmid):
-            try:
-                os.kill(pid, 9)
-            except ProcessLookupError:
-                continue
+            subprocess.run(
+                ["sudo", "kill", "-9", str(pid)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
 
     destroy_cmd = ["sudo", rpc_client, "destroy-vm", f"vid={vmid}"]
     print(f"[cmd] {' '.join(shlex.quote(x) for x in destroy_cmd)}")
@@ -322,11 +423,13 @@ def handle_destroy_vm(args: argparse.Namespace, rpc_client: str) -> int:
     if "success" not in out.lower():
         raise RuntimeError(f"destroy-vm failed for vid={vmid}: {out}")
 
-    print(f"destroy success: vmid={vmid} qemu_killed={len(pids)}")
+    print(f"[info] destroy success: vmid={vmid} qemu_killed={len(pids)}")
     return 0
 
 
-def handle_create_vm(args: argparse.Namespace, qemu_bin: str, rpc_client: str) -> int:
+def handle_create_vm(
+    args: argparse.Namespace, qemu_bin: str, rpc_client: str
+) -> int:
     memory_mb = parse_memory_to_mb(args.memory)
     if args.channels <= 0:
         raise ValueError("--channels must be > 0")
@@ -343,6 +446,7 @@ def handle_create_vm(args: argparse.Namespace, qemu_bin: str, rpc_client: str) -
         cpu_set=args.cpu_set,
         image=args.image,
         hostfwd_port=args.hostfwd_port,
+        disable_vcpu_pin=args.disable_vcpu_pin,
         dry_run=args.dry_run,
     )
 
@@ -403,14 +507,23 @@ def handle_create_vm(args: argparse.Namespace, qemu_bin: str, rpc_client: str) -
             qemu_started = True
             qemu_pids = find_qemu_pids_by_vmid(vmid)
             qemu_pid = qemu_pids[0] if qemu_pids else proc.pid
-            print("QEMU launch success.")
-            print(f"pid={qemu_pid} vmid={vmid} ssh_port={hostfwd_port} log_path={log_path}")
+            print(f"[info] QEMU launch success: pid={qemu_pid} vmid={vmid} ssh_port={hostfwd_port} log_path={log_path}")
+            wait_for_vm_ready(vmid, qemu_pid, hostfwd_port)
+            if cfg.disable_vcpu_pin:
+                print(f"[info] vCPU pin disabled: vmid={vmid}")
+            else:
+                try:
+                    pin_qemu_vcpus(vmid, cfg.cpu_set)
+                    print(f"[info] CPU pin success: vmid={vmid} cpu_set={cfg.cpu_set}")
+                except Exception as pin_err:
+                    print(f"[warn] vcpu pin failed for vmid={vmid}: {pin_err}", file=sys.stderr)
+            print(f"[info] VM startup ready: SSH port={hostfwd_port}")
     finally:
         if cfg.dry_run or not qemu_started:
             try:
                 run_cmd(["sudo", rpc_client, "destroy-vm", f"vid={vmid}"], False)
             except Exception as cleanup_err:
-                print(f"warning: failed to destroy vm {vmid}: {cleanup_err}", file=sys.stderr)
+                print(f"[warn] failed to destroy vm {vmid}: {cleanup_err}", file=sys.stderr)
 
     return 0
 
