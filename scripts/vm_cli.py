@@ -10,8 +10,9 @@ import time
 from dataclasses import dataclass
 from typing import List, Tuple
 
-base_port = 2806
+BASE_PORT = 2806
 VM_NAME_PREFIX = "RAMRYDER-VM"
+
 
 @dataclass
 class VmConfig:
@@ -111,7 +112,7 @@ def get_used_vm_ids(rpc_client: str) -> List[int]:
         line = line.strip()
         if not line.startswith("VM id="):
             continue
-        token = line.split()[1]  # id=123
+        token = line.split()[1]
         if not token.startswith("id="):
             continue
         try:
@@ -133,8 +134,7 @@ def build_paths() -> Tuple[str, str, str]:
 def to_m_arg(memory_mb: int) -> str:
     if memory_mb % 1024 == 0:
         return f"{memory_mb // 1024}G"
-    else:
-        return f"{memory_mb}M"
+    return f"{memory_mb}M"
 
 
 def is_tcp_port_in_use(port: int) -> bool:
@@ -147,9 +147,7 @@ def is_tcp_port_in_use(port: int) -> bool:
             return True
 
 
-def main() -> int:
-    qemu_bin, rpc_client, default_img = build_paths()
-
+def build_parser(default_img: str) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="RamRyder VM CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -163,35 +161,155 @@ def main() -> int:
 
     destroy_parser = subparsers.add_parser("destroy-vm", help="Destroy a VM and release resources")
     destroy_parser.add_argument("--vmid", required=True, type=int, help="VM ID to destroy")
+    return parser
 
-    args = parser.parse_args()
 
-    if args.command == "destroy-vm":
-        vmid = args.vmid
-        pids = find_qemu_pids_by_vmid(vmid)
-        for pid in pids:
+def select_vmid(rpc_client: str) -> int:
+    existing_vmids = get_used_vm_ids(rpc_client)
+    if existing_vmids:
+        print(f"[info] existing vm ids: {','.join(str(v) for v in existing_vmids)}")
+    else:
+        print("[info] existing vm ids: (none detected)")
+
+    used = set(existing_vmids)
+    vmid = 0
+    while vmid in used:
+        vmid += 1
+    return vmid
+
+
+def select_hostfwd_port(requested: int, vmid: int) -> int:
+    if requested is not None:
+        return requested
+
+    port = BASE_PORT + vmid
+    if not is_tcp_port_in_use(port):
+        return port
+
+    for _ in range(128):
+        candidate = port + random.randint(1, 2000)
+        if not is_tcp_port_in_use(candidate):
+            return candidate
+    raise RuntimeError("failed to find a free hostfwd port")
+
+
+def build_qemu_cmd(
+    qemu_bin: str,
+    cfg: VmConfig,
+    vmid: int,
+    smp: int,
+    node0_vcpu_range: str,
+    hostfwd_port: int,
+    rpc_client: str,
+) -> List[str]:
+    name = f"{VM_NAME_PREFIX}-{vmid}"
+    sock_path = "/var/run"
+    qmp_sock = f"{sock_path}/qmp-sock-{vmid}"
+    qga_sock = f"{sock_path}/qga-sock-{vmid}"
+
+    per_channel_mb = split_memory(cfg.memory_mb, cfg.channels)
+    selected_nodes = list(range(cfg.channels))
+
+    mem_args: List[str] = []
+    node_args: List[str] = []
+
+    for mem_idx, node_id in enumerate(selected_nodes):
+        size_mb = per_channel_mb[mem_idx]
+        out = run_cmd(
+            ["sudo", rpc_client, "alloc-mem", f"nid={node_id}", f"vid={vmid}", f"size={size_mb}"],
+            False,
+        )
+        if not out:
+            raise RuntimeError("alloc-mem returned empty output; cannot build memdev argument")
+        mem_args.append(f"-object memory-backend-file,share=on,{out}")
+
+    for mem_idx, node_id in enumerate(selected_nodes):
+        out = run_cmd(["sudo", rpc_client, "get-node-info", f"nid={node_id}"], False)
+        if not out:
+            raise RuntimeError("get-node-info returned empty output; cannot build numa node argument")
+        base = f"-numa node,{out},seg-id=0"
+        if mem_idx == 0:
+            node_args.append(f"{base},memdev=mem{mem_idx},cpus={node0_vcpu_range}")
+        else:
+            node_args.append(f"{base},memdev=mem{mem_idx}")
+
+    qemu_cmd: List[str] = [
+        "sudo",
+        "taskset",
+        "-c",
+        cfg.cpu_set,
+        qemu_bin,
+        "-name",
+        name,
+        "-enable-kvm",
+        "-cpu",
+        "host",
+        "-smp",
+        str(smp),
+        "-m",
+        to_m_arg(cfg.memory_mb),
+    ]
+
+    for item in mem_args:
+        qemu_cmd.extend(shlex.split(item))
+    for item in node_args:
+        qemu_cmd.extend(shlex.split(item))
+
+    qemu_cmd.extend(
+        [
+            "-device",
+            "virtio-scsi-pci,id=scsi0",
+            "-device",
+            "scsi-hd,drive=hd0",
+            "-drive",
+            f"file={cfg.image},if=none,aio=native,cache=none,format=qcow2,id=hd0",
+            "-net",
+            f"user,hostfwd=tcp::{hostfwd_port}-:22",
+            "-net",
+            "nic,model=virtio",
+            "-nographic",
+            "-qmp",
+            f"unix:{qmp_sock},server,nowait",
+            "-chardev",
+            f"socket,path={qga_sock},server=on,wait=off,id=qga0",
+            "-device",
+            "virtio-serial",
+            "-device",
+            "virtserialport,chardev=qga0,name=org.qemu.guest_agent.0",
+        ]
+    )
+    return qemu_cmd
+
+
+def handle_destroy_vm(args: argparse.Namespace, rpc_client: str) -> int:
+    vmid = args.vmid
+    pids = find_qemu_pids_by_vmid(vmid)
+
+    for pid in pids:
+        try:
+            os.kill(pid, 15)
+        except ProcessLookupError:
+            continue
+
+    if pids:
+        time.sleep(1.0)
+        for pid in find_qemu_pids_by_vmid(vmid):
             try:
-                os.kill(pid, 15)
+                os.kill(pid, 9)
             except ProcessLookupError:
                 continue
-        if pids:
-            time.sleep(1.0)
-            remain = find_qemu_pids_by_vmid(vmid)
-            for pid in remain:
-                try:
-                    os.kill(pid, 9)
-                except ProcessLookupError:
-                    continue
-        destroy_cmd = ["sudo", rpc_client, "destroy-vm", f"vid={vmid}"]
-        print(f"[cmd] {' '.join(shlex.quote(x) for x in destroy_cmd)}")
-        out = run_cmd_capture(destroy_cmd)
-        if "success" not in out.lower():
-            raise RuntimeError(f"destroy-vm failed for vid={vmid}: {out}")
-        print(f"destroy success: vmid={vmid} qemu_killed={len(pids)}")
-        return 0
 
-    # create-vm path below
+    destroy_cmd = ["sudo", rpc_client, "destroy-vm", f"vid={vmid}"]
+    print(f"[cmd] {' '.join(shlex.quote(x) for x in destroy_cmd)}")
+    out = run_cmd_capture(destroy_cmd)
+    if "success" not in out.lower():
+        raise RuntimeError(f"destroy-vm failed for vid={vmid}: {out}")
 
+    print(f"destroy success: vmid={vmid} qemu_killed={len(pids)}")
+    return 0
+
+
+def handle_create_vm(args: argparse.Namespace, qemu_bin: str, rpc_client: str) -> int:
     memory_mb = parse_memory_to_mb(args.memory)
     if args.channels <= 0:
         raise ValueError("--channels must be > 0")
@@ -211,17 +329,7 @@ def main() -> int:
         dry_run=args.dry_run,
     )
 
-    existing_vmids = get_used_vm_ids(rpc_client)
-    if existing_vmids:
-        print(f"[info] existing vm ids: {','.join(str(v) for v in existing_vmids)}")
-    else:
-        print("[info] existing vm ids: (none detected)")
-
-    used_set = set(existing_vmids)
-    vmid = 0
-    while vmid in used_set:
-        vmid += 1
-
+    vmid = select_vmid(rpc_client)
     create_cmd = ["sudo", rpc_client, "create-vm", f"vid={vmid}", f"coreset=[{cfg.cpu_set}]"]
     print(f"[cmd] {' '.join(shlex.quote(x) for x in create_cmd)}")
     create_out = run_cmd_capture(create_cmd)
@@ -229,101 +337,23 @@ def main() -> int:
         raise RuntimeError(f"create-vm failed for vid={vmid}: {create_out}")
     print(f"[info] selected vm id: {vmid}")
 
-    if cfg.hostfwd_port is not None:
-        hostfwd_port = cfg.hostfwd_port
-    else:
-        hostfwd_port = base_port + vmid
-        if is_tcp_port_in_use(hostfwd_port):
-            for _ in range(128):
-                candidate = hostfwd_port + random.randint(1, 2000)
-                if not is_tcp_port_in_use(candidate):
-                    hostfwd_port = candidate
-                    break
-            else:
-                raise RuntimeError("failed to find a free hostfwd port")
+    hostfwd_port = select_hostfwd_port(cfg.hostfwd_port, vmid)
     print(f"[info] hostfwd port: {hostfwd_port}")
 
-    name = f"{VM_NAME_PREFIX}-{vmid}"
-    sock_path = "/var/run"
-    qmp_sock = f"{sock_path}/qmp-sock-{vmid}"
-    qga_sock = f"{sock_path}/qga-sock-{vmid}"
+    qemu_cmd = build_qemu_cmd(
+        qemu_bin=qemu_bin,
+        cfg=cfg,
+        vmid=vmid,
+        smp=smp,
+        node0_vcpu_range=node0_vcpu_range,
+        hostfwd_port=hostfwd_port,
+        rpc_client=rpc_client,
+    )
 
-    per_channel_mb = split_memory(cfg.memory_mb, cfg.channels)
-    selected_nodes = list(range(cfg.channels))
-
-    mem_args: List[str] = []
-    node_args: List[str] = []
     log_path = f"/tmp/ramryder-vm-{vmid}.log"
     qemu_started = False
 
     try:
-        for mem_idx, node_id in enumerate(selected_nodes):
-            size_mb = per_channel_mb[mem_idx]
-            out = run_cmd(
-                ["sudo", rpc_client, "alloc-mem", f"nid={node_id}", f"vid={vmid}", f"size={size_mb}"],
-                False,
-            )
-            if not out:
-                raise RuntimeError("alloc-mem returned empty output; cannot build memdev argument")
-            mem_arg = f"-object memory-backend-file,share=on,{out}"
-            mem_args.append(mem_arg)
-
-        for mem_idx, node_id in enumerate(selected_nodes):
-            out = run_cmd(["sudo", rpc_client, "get-node-info", f"nid={node_id}"], False)
-            if not out:
-                raise RuntimeError("get-node-info returned empty output; cannot build numa node argument")
-            base = f"-numa node,{out},seg-id=0"
-            if mem_idx == 0:
-                node_args.append(f"{base},memdev=mem{mem_idx},cpus={node0_vcpu_range}")
-            else:
-                node_args.append(f"{base},memdev=mem{mem_idx}")
-
-        qemu_cmd: List[str] = [
-            "sudo",
-            "taskset",
-            "-c",
-            cfg.cpu_set,
-            qemu_bin,
-            "-name",
-            name,
-            "-enable-kvm",
-            "-cpu",
-            "host",
-            "-smp",
-            str(smp),
-            "-m",
-            to_m_arg(cfg.memory_mb),
-        ]
-
-        for item in mem_args:
-            qemu_cmd.extend(shlex.split(item))
-        for item in node_args:
-            qemu_cmd.extend(shlex.split(item))
-
-        qemu_cmd.extend(
-            [
-                "-device",
-                "virtio-scsi-pci,id=scsi0",
-                "-device",
-                "scsi-hd,drive=hd0",
-                "-drive",
-                f"file={cfg.image},if=none,aio=native,cache=none,format=qcow2,id=hd0",
-                "-net",
-                f"user,hostfwd=tcp::{hostfwd_port}-:22",
-                "-net",
-                "nic,model=virtio",
-                "-nographic",
-                "-qmp",
-                f"unix:{qmp_sock},server,nowait",
-                "-chardev",
-                f"socket,path={qga_sock},server=on,wait=off,id=qga0",
-                "-device",
-                "virtio-serial",
-                "-device",
-                "virtserialport,chardev=qga0,name=org.qemu.guest_agent.0",
-            ]
-        )
-
         if cfg.dry_run:
             run_cmd(qemu_cmd, True)
         else:
@@ -356,7 +386,21 @@ def main() -> int:
                 run_cmd(["sudo", rpc_client, "destroy-vm", f"vid={vmid}"], False)
             except Exception as cleanup_err:
                 print(f"warning: failed to destroy vm {vmid}: {cleanup_err}", file=sys.stderr)
+
     return 0
+
+
+def main() -> int:
+    qemu_bin, rpc_client, default_img = build_paths()
+    parser = build_parser(default_img)
+    args = parser.parse_args()
+
+    if args.command == "create-vm":
+        return handle_create_vm(args, qemu_bin, rpc_client)
+    elif args.command == "destroy-vm":
+        return handle_destroy_vm(args, rpc_client)
+    else:
+        raise ValueError(f"unknown command: {args.command}")
 
 
 if __name__ == "__main__":
