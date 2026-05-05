@@ -86,20 +86,21 @@ def run_cmd_capture(cmd: List[str]) -> str:
     return out if out else err
 
 
-def find_qemu_pid_by_vmid(vmid: int) -> int:
+def find_qemu_pids_by_vmid(vmid: int) -> List[int]:
     pattern = f"qemu-system-x86_64.*qmp-sock-{vmid}"
     proc = subprocess.run(["pgrep", "-f", pattern], capture_output=True, text=True)
     if proc.returncode != 0:
-        return -1
+        return []
+    pids: List[int] = []
     for line in (proc.stdout or "").splitlines():
         line = line.strip()
         if not line:
             continue
         try:
-            return int(line)
+            pids.append(int(line))
         except ValueError:
             continue
-    return -1
+    return pids
 
 
 def get_used_vm_ids(rpc_client: str) -> List[int]:
@@ -148,15 +149,47 @@ def is_tcp_port_in_use(port: int) -> bool:
 def main() -> int:
     qemu_bin, rpc_client, default_img = build_paths()
 
-    parser = argparse.ArgumentParser(description="Launch RamRyder VM with generated QEMU args")
-    parser.add_argument("--memory", required=True, help="Total memory (MB or with suffix like 150G)")
-    parser.add_argument("--channels", required=True, type=int, help="Number of channels to allocate")
-    parser.add_argument("--cpu-set", required=True, help="Host CPU set, e.g. 0-9,20-29")
-    parser.add_argument("--image", default=default_img, help="VM image path")
-    parser.add_argument("--hostfwd-port", type=int, help="Host forwarded SSH port (default: base port (2806) + VMID)")
-    parser.add_argument("--dry-run", action="store_true", help="Execute RPC steps but do not launch final QEMU process")
+    parser = argparse.ArgumentParser(description="RamRyder VM CLI")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    create_parser = subparsers.add_parser("create-vm", help="Create and launch a VM")
+    create_parser.add_argument("--memory", required=True, help="Total memory (MB or with suffix like 150G)")
+    create_parser.add_argument("--channels", required=True, type=int, help="Number of channels to allocate")
+    create_parser.add_argument("--cpu-set", required=True, help="Host CPU set, e.g. 0-9,20-29")
+    create_parser.add_argument("--image", default=default_img, help="VM image path")
+    create_parser.add_argument("--hostfwd-port", type=int, help="Host forwarded SSH port (default: base port (2806) + VMID)")
+    create_parser.add_argument("--dry-run", action="store_true", help="Execute RPC steps but do not launch final QEMU process")
+
+    destroy_parser = subparsers.add_parser("destroy-vm", help="Destroy a VM and release resources")
+    destroy_parser.add_argument("--vmid", required=True, type=int, help="VM ID to destroy")
 
     args = parser.parse_args()
+
+    if args.command == "destroy-vm":
+        vmid = args.vmid
+        pids = find_qemu_pids_by_vmid(vmid)
+        for pid in pids:
+            try:
+                os.kill(pid, 15)
+            except ProcessLookupError:
+                continue
+        if pids:
+            time.sleep(1.0)
+            remain = find_qemu_pids_by_vmid(vmid)
+            for pid in remain:
+                try:
+                    os.kill(pid, 9)
+                except ProcessLookupError:
+                    continue
+        destroy_cmd = ["sudo", rpc_client, "destroy-vm", f"vid={vmid}"]
+        print(f"[cmd] {' '.join(shlex.quote(x) for x in destroy_cmd)}")
+        out = run_cmd_capture(destroy_cmd)
+        if "success" not in out.lower():
+            raise RuntimeError(f"destroy-vm failed for vid={vmid}: {out}")
+        print(f"destroy success: vmid={vmid} qemu_killed={len(pids)}")
+        return 0
+
+    # create-vm path below
 
     memory_mb = parse_memory_to_mb(args.memory)
     if args.channels <= 0:
@@ -312,9 +345,8 @@ def main() -> int:
                 raise RuntimeError(f"qemu exited early with code {ret}")
 
             qemu_started = True
-            qemu_pid = find_qemu_pid_by_vmid(vmid)
-            if qemu_pid <= 0:
-                qemu_pid = proc.pid
+            qemu_pids = find_qemu_pids_by_vmid(vmid)
+            qemu_pid = qemu_pids[0] if qemu_pids else proc.pid
             print("QEMU launch success.")
             print(f"pid={qemu_pid} vmid={vmid} ssh_port={hostfwd_port} log_path={log_path}")
     finally:
