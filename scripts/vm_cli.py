@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import List, Tuple
 
 base_port = 2806
+VM_NAME_PREFIX = "RAMRYDER-VM"
 
 @dataclass
 class VmConfig:
@@ -87,7 +88,7 @@ def run_cmd_capture(cmd: List[str]) -> str:
 
 
 def find_qemu_pids_by_vmid(vmid: int) -> List[int]:
-    pattern = f"qemu-system-x86_64.*qmp-sock-{vmid}"
+    pattern = f"qemu-system-x86_64.*-name {VM_NAME_PREFIX}-{vmid}"
     proc = subprocess.run(["pgrep", "-f", pattern], capture_output=True, text=True)
     if proc.returncode != 0:
         return []
@@ -242,7 +243,7 @@ def main() -> int:
                 raise RuntimeError("failed to find a free hostfwd port")
     print(f"[info] hostfwd port: {hostfwd_port}")
 
-    name = f"RAMRYDER-VM-{vmid}"
+    name = f"{VM_NAME_PREFIX}-{vmid}"
     sock_path = "/var/run"
     qmp_sock = f"{sock_path}/qmp-sock-{vmid}"
     qga_sock = f"{sock_path}/qga-sock-{vmid}"
