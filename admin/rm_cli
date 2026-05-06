@@ -10,9 +10,11 @@ import sys
 import time
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
+from rm_api import ResourceClient
 
 BASE_PORT = 2806
 VM_NAME_PREFIX = "RAMRYDER-VM"
+RC = ResourceClient()
 
 
 @dataclass
@@ -133,8 +135,8 @@ def find_qemu_pids_by_vmid(vmid: int) -> List[int]:
     return pids
 
 
-def get_used_vm_ids(rpc_client: str) -> List[int]:
-    output = run_cmd_capture(["sudo", rpc_client, "get-vms"])
+def get_used_vm_ids() -> List[int]:
+    output = RC.get_vms()
     used = set()
     for line in output.splitlines():
         line = line.strip()
@@ -150,8 +152,8 @@ def get_used_vm_ids(rpc_client: str) -> List[int]:
     return sorted(used)
 
 
-def get_mem_pool_nodes(rpc_client: str) -> List[MemPoolNode]:
-    output = run_cmd_capture(["sudo", rpc_client, "get-mem-pool"])
+def get_mem_pool_nodes() -> List[MemPoolNode]:
+    output = RC.get_mem_pool()
     nodes: List[MemPoolNode] = []
     for raw in output.splitlines():
         line = raw.strip()
@@ -172,13 +174,12 @@ def get_mem_pool_nodes(rpc_client: str) -> List[MemPoolNode]:
     return nodes
 
 
-def build_paths() -> Tuple[str, str, str]:
+def build_paths() -> Tuple[str, str]:
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = script_dir
+    project_root = os.path.dirname(script_dir)
     qemu_bin = os.path.join(project_root, "qemu", "build", "qemu-system-x86_64")
-    rpc_client = os.path.join(project_root, "src", "resource_client")
     default_img = os.path.join(os.path.expanduser("~"), "images", "nvcloud-image-clean.qcow2")
-    return qemu_bin, rpc_client, default_img
+    return qemu_bin, default_img
 
 
 def get_vcpu_threads_from_qmp(qmp_sock: str) -> List[Tuple[int, int]]:
@@ -287,8 +288,8 @@ def build_parser(default_img: str) -> argparse.ArgumentParser:
     return parser
 
 
-def select_vmid(rpc_client: str) -> int:
-    existing_vmids = get_used_vm_ids(rpc_client)
+def select_vmid() -> int:
+    existing_vmids = get_used_vm_ids()
     if existing_vmids:
         print(f"[info] existing vm ids: {','.join(str(v) for v in existing_vmids)}")
     else:
@@ -332,7 +333,6 @@ def build_qemu_cmd(
     smp: int,
     node0_vcpu_range: str,
     hostfwd_port: int,
-    rpc_client: str,
     all_node_ids: List[int],
     allocations: List[Tuple[int, int]],
 ) -> List[str]:
@@ -346,10 +346,7 @@ def build_qemu_cmd(
 
     node_to_memidx: Dict[int, int] = {}
     for mem_idx, (node_id, size_mb) in enumerate(allocations):
-        out = run_cmd(
-            ["sudo", rpc_client, "alloc-mem", f"nid={node_id}", f"vid={vmid}", f"size={size_mb}"],
-            False,
-        )
+        out = RC.alloc_mem(node_id, vmid, size_mb)
         if not out:
             raise RuntimeError("alloc-mem returned empty output; cannot build memdev argument")
         mem_args.append(f"-object memory-backend-file,share=on,{out}")
@@ -357,7 +354,7 @@ def build_qemu_cmd(
 
     first_mem_node = allocations[0][0] if allocations else None
     for node_id in all_node_ids:
-        out = run_cmd(["sudo", rpc_client, "get-node-info", f"nid={node_id}"], False)
+        out = RC.get_node_info(node_id)
         if not out:
             raise RuntimeError("get-node-info returned empty output; cannot build numa node argument")
         base = f"-numa node,{out},seg-id=0"
@@ -419,7 +416,7 @@ def build_qemu_cmd(
     return qemu_cmd
 
 
-def handle_destroy_vm(args: argparse.Namespace, rpc_client: str) -> int:
+def handle_destroy_vm(args: argparse.Namespace) -> int:
     vmid = args.vmid
     pids = find_qemu_pids_by_vmid(vmid)
     for pid in pids:
@@ -429,9 +426,7 @@ def handle_destroy_vm(args: argparse.Namespace, rpc_client: str) -> int:
         for pid in find_qemu_pids_by_vmid(vmid):
             subprocess.run(["sudo", "kill", "-9", str(pid)], check=False, capture_output=True, text=True)
 
-    destroy_cmd = ["sudo", rpc_client, "destroy-vm", f"vid={vmid}"]
-    print(f"[cmd] {' '.join(shlex.quote(x) for x in destroy_cmd)}")
-    out = run_cmd_capture(destroy_cmd)
+    out = RC.destroy_vm(vmid)
     if "success" not in out.lower():
         raise RuntimeError(f"destroy-vm failed for vid={vmid}: {out}")
 
@@ -439,7 +434,7 @@ def handle_destroy_vm(args: argparse.Namespace, rpc_client: str) -> int:
     return 0
 
 
-def handle_create_vm(args: argparse.Namespace, qemu_bin: str, rpc_client: str) -> int:
+def handle_create_vm(args: argparse.Namespace, qemu_bin: str) -> int:
     if args.cxl_memory is None and args.cxl_channels is not None:
         raise ValueError("--cxl-memory is required when --cxl-channels is set")
     if args.cxl_memory is not None and args.cxl_channels is None:
@@ -476,7 +471,7 @@ def handle_create_vm(args: argparse.Namespace, qemu_bin: str, rpc_client: str) -
         dry_run=args.dry_run,
     )
 
-    pool_nodes = get_mem_pool_nodes(rpc_client)
+    pool_nodes = get_mem_pool_nodes()
     all_node_ids = sorted({n.node_id for n in pool_nodes})
     tier0_node_ids = choose_nodes_for_tier(pool_nodes, 0, cfg.channels, "local memory (DIMM)")
     tier1_node_ids = choose_nodes_for_tier(pool_nodes, 1, cfg.cxl_channels, "CXL memory") if cfg.cxl_channels > 0 else []
@@ -494,10 +489,8 @@ def handle_create_vm(args: argparse.Namespace, qemu_bin: str, rpc_client: str) -
         for node_id, size_mb in zip(tier1_node_ids, split_memory(cfg.cxl_memory_mb, cfg.cxl_channels)):
             allocations.append((node_id, size_mb))
 
-    vmid = select_vmid(rpc_client)
-    create_cmd = ["sudo", rpc_client, "create-vm", f"vid={vmid}", f"coreset=[{cfg.cpu_set}]"]
-    print(f"[cmd] {' '.join(shlex.quote(x) for x in create_cmd)}")
-    create_out = run_cmd_capture(create_cmd)
+    vmid = select_vmid()
+    create_out = RC.create_vm(vmid, cfg.cpu_set)
     if "success" not in create_out.lower():
         raise RuntimeError(f"create-vm failed for vid={vmid}: {create_out}")
     print(f"[info] selected vm id: {vmid}")
@@ -516,7 +509,6 @@ def handle_create_vm(args: argparse.Namespace, qemu_bin: str, rpc_client: str) -
             smp=smp,
             node0_vcpu_range=node0_vcpu_range,
             hostfwd_port=hostfwd_port,
-            rpc_client=rpc_client,
             all_node_ids=all_node_ids,
             allocations=allocations,
         )
@@ -559,7 +551,7 @@ def handle_create_vm(args: argparse.Namespace, qemu_bin: str, rpc_client: str) -
     finally:
         if cfg.dry_run or not qemu_started:
             try:
-                run_cmd(["sudo", rpc_client, "destroy-vm", f"vid={vmid}"], False)
+                _ = RC.destroy_vm(vmid)
             except Exception as cleanup_err:
                 print(f"[warn] failed to destroy vm {vmid}: {cleanup_err}", file=sys.stderr)
 
@@ -567,14 +559,14 @@ def handle_create_vm(args: argparse.Namespace, qemu_bin: str, rpc_client: str) -
 
 
 def main() -> int:
-    qemu_bin, rpc_client, default_img = build_paths()
+    qemu_bin, default_img = build_paths()
     parser = build_parser(default_img)
     args = parser.parse_args()
 
     if args.command == "create-vm":
-        return handle_create_vm(args, qemu_bin, rpc_client)
+        return handle_create_vm(args, qemu_bin)
     elif args.command == "destroy-vm":
-        return handle_destroy_vm(args, rpc_client)
+        return handle_destroy_vm(args)
     else:
         raise ValueError(f"unknown command: {args.command}")
 
