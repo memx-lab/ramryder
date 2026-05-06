@@ -474,8 +474,8 @@ int vm_mngr_dump_state(char *buffer, int buffer_size)
         }
 
         offset += snprintf(buffer + offset, buffer_size - offset,
-                "VM id=%d running=%s cores=%d coreset=[%s] memdev_count=%d\n",
-                VM->vm_id, VM->running ? "yes" : "no", VM->num_cores,
+                "VM id=%d cores=%d coreset=[%s] memdev_count=%d\n",
+                VM->vm_id, VM->num_cores,
                 VM->core_set, VM->memdev_counter);
         if (offset >= buffer_size) {
             break;
