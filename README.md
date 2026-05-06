@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logos/logo_large_dark_bg.png" alt="RamRyder Logo" />
+  <img src="logos/logo_small_trim.png" alt="RamRyder Logo" width="80%" />
 </p>
 
 # About
@@ -13,7 +13,7 @@ The main components of RamRyder include a user-space resource manager, a hypervi
 This page describes how to build RamRyder, configure the resource manager, and
 manage VMs with `ramryder_cli`.
 
-### Get source code
+## Get source code
 
 ```bash
 git clone --recurse-submodules git@github.com:memx-lab/ramryder.git
@@ -25,11 +25,11 @@ If you already cloned the repository without `--recurse-submodules`, run:
 git submodule update --init --recursive
 ```
 
-### Build project
+## Build project
 
 From the RamRyder directory:
 
-#### Build resource manager
+### Build resource manager
 
 ```bash
 ./scripts/pkgdep.sh
@@ -38,7 +38,7 @@ From the RamRyder directory:
 make
 ```
 
-#### Build QEMU
+### Build QEMU
 
 ```bash
 cd qemu
@@ -49,15 +49,15 @@ make -j$(nproc)
 cd ../..
 ```
 
-### Configure hardware resource
+## Configure hardware resource
 
-#### 1) Configure hardware
+### 1) Configure hardware
 
 RamRyder supports multiple memory hardware types (for example DIMM, PMEM, and CXL). Before configuring resource manager, first prepare and expose your memory devices correctly on the host.
 
 For hardware-specific setup steps, see [Document - Hardware Support](https://memx-lab.github.io/docs/hardware-support/overview).
 
-#### 2) Configure resource manager file
+### 2) Configure resource manager file
 
 Create `src/elesticmm.conf` (or copy from `src/elasticmm_default.conf`) and
 configure your memory devices:
@@ -92,7 +92,7 @@ For each DAX device:
 
 For details, refer to [Document - Get Started](https://memx-lab.github.io/docs/memx-ramryder/build)
 
-### Start resource manager
+## Start resource manager
 
 ```bash
 cd src
@@ -101,7 +101,7 @@ sudo ./resource_manager
 
 `sudo` is required because resource manager reads host performance counters.
 
-### Get VM image
+## Get VM image
 
 We provide a clean Ubuntu VM image: [Download Link](https://drive.google.com/file/d/1DASrFSRzh7dV2UX0fINgHhx10W13yZdz/view?usp=sharing).
 
@@ -111,7 +111,7 @@ tar -xf nvcloud-image-clean.tar.xz
 
 Then refer to `readme.txt` inside the package for login information.
 
-### VM management
+## VM management
 
 All VM operations are managed by `admin/ramryder_cli`. You can use
 `ramryder_cli` to query resource allocations, allocate resources, and create
@@ -122,7 +122,7 @@ cd /path/to/ramryder
 ./admin/ramryder_cli --help
 ```
 
-#### 1) Query resource status
+### 1) Query resource status
 
 Memory pool:
 
@@ -136,7 +136,7 @@ VM allocation status:
 ./admin/ramryder_cli query --type vm
 ```
 
-#### 2) Create VM
+### 2) Create VM
 
 Create a VM with local memory (DIMM):
 
@@ -177,7 +177,7 @@ VM):
   --dry-run
 ```
 
-#### 3) Dynamically add memory to a running VM
+### 3) Dynamically add memory to a running VM
 
 Add DIMM memory from new channels:
 
@@ -210,7 +210,7 @@ Add CXL memory:
 
 `attach-mem` prints allocated `memid` values. Keep them for detach operations.
 
-#### 4) Dynamically remove memory
+### 4) Dynamically remove memory
 
 ```bash
 ./admin/ramryder_cli detach-mem --vmid 0 --memid 3
@@ -218,7 +218,7 @@ Add CXL memory:
 
 `memid` is numeric (`mem3 -> 3`).
 
-#### 5) Destroy VM
+### 5) Destroy VM
 
 ```bash
 ./admin/ramryder_cli destroy-vm --vmid 0
@@ -226,6 +226,6 @@ Add CXL memory:
 
 This command kills the VM process and releases all resource-manager allocations.
 
-### Update guest kernel
+## Update guest kernel
 
 After VM is ready, log into VM and then follow [RAMOS Get Started](https://memx-lab.github.io/docs/memx-ramos/build) to update guest kernel.
