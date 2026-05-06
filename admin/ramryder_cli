@@ -10,7 +10,7 @@ import sys
 import time
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
-from rm_api import ResourceClient
+from resource_mngr_rpc import ResourceClient
 
 BASE_PORT = 2806
 VM_NAME_PREFIX = "RAMRYDER-VM"
