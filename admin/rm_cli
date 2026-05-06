@@ -34,6 +34,7 @@ class VmConfig:
 class MemPoolNode:
     node_id: int
     tier_id: int
+    free_mb: int
 
 
 def parse_memory_to_mb(raw: str) -> int:
@@ -163,11 +164,16 @@ def get_mem_pool_nodes() -> List[MemPoolNode]:
         if len(parts) < 9:
             continue
         try:
+            segment_mb = int(parts[3])
+            used_seg = int(parts[4])
+            total_seg = int(parts[5])
             node_id = int(parts[6])
             tier_id = int(parts[7])
         except ValueError:
             continue
-        nodes.append(MemPoolNode(node_id=node_id, tier_id=tier_id))
+        free_seg = total_seg - used_seg
+        free_mb = free_seg * segment_mb
+        nodes.append(MemPoolNode(node_id=node_id, tier_id=tier_id, free_mb=free_mb))
     if not nodes:
         raise RuntimeError("failed to parse nodes from get-mem-pool output")
     nodes.sort(key=lambda n: n.node_id)
@@ -318,16 +324,66 @@ def select_hostfwd_port(requested: int, vmid: int) -> int:
     raise RuntimeError("failed to find a free hostfwd port")
 
 
-def choose_nodes_for_tier(
-    nodes: List[MemPoolNode], tier_id: int, channels: int, memory_name: str
-) -> List[int]:
-    candidates = [n.node_id for n in nodes if n.tier_id == tier_id]
-    candidates.sort()
-    if channels > len(candidates):
+def choose_allocations_for_tier(
+    tier_nodes: List[MemPoolNode],
+    requested_sizes_mb: List[int],
+    memory_name: str,
+) -> List[Tuple[int, int]]:
+    channels = len(requested_sizes_mb)
+    if channels == 0:
+        return []
+
+    if channels > len(tier_nodes):
         raise ValueError(
-            f"{memory_name} channels ({channels}) must be <= available channels ({len(candidates)})"
+            f"{memory_name} channels ({channels}) must be <= available channels ({len(tier_nodes)})"
         )
-    return candidates[:channels]
+
+    # Greedy matching: large requests first, assign to nodes with enough free capacity.
+    sizes_sorted = sorted(requested_sizes_mb, reverse=True)
+    candidate_nodes = sorted(tier_nodes, key=lambda n: n.free_mb, reverse=True)
+    used_node_ids = set()
+    selected: List[Tuple[int, int]] = []
+    for size_mb in sizes_sorted:
+        picked = None
+        for node in candidate_nodes:
+            if node.node_id in used_node_ids:
+                continue
+            if node.free_mb >= size_mb:
+                picked = node
+                break
+        if picked is None:
+            max_free = max((n.free_mb for n in candidate_nodes if n.node_id not in used_node_ids), default=0)
+            raise ValueError(
+                f"{memory_name} capacity is not enough: need per-channel up to {size_mb}MB, "
+                f"but largest remaining free channel is {max_free}MB"
+            )
+        used_node_ids.add(picked.node_id)
+        selected.append((picked.node_id, size_mb))
+
+    # Deterministic order by node id for stable command lines.
+    selected.sort(key=lambda x: x[0])
+    return selected
+
+
+def build_memory_plan(cfg: VmConfig) -> Tuple[List[int], List[Tuple[int, int]], int, int]:
+    pool_nodes = get_mem_pool_nodes()
+    all_node_ids = sorted({n.node_id for n in pool_nodes})
+    tier0_nodes = [n for n in pool_nodes if n.tier_id == 0]
+    tier1_nodes = [n for n in pool_nodes if n.tier_id == 1]
+
+    allocations: List[Tuple[int, int]] = []
+    tier0_sizes = split_memory(cfg.memory_mb, cfg.channels)
+    tier0_allocations = choose_allocations_for_tier(tier0_nodes, tier0_sizes, "local memory (DIMM)")
+    for item in tier0_allocations:
+        allocations.append(item)
+
+    if cfg.cxl_channels > 0:
+        tier1_sizes = split_memory(cfg.cxl_memory_mb, cfg.cxl_channels)
+        tier1_allocations = choose_allocations_for_tier(tier1_nodes, tier1_sizes, "CXL memory")
+        for item in tier1_allocations:
+            allocations.append(item)
+
+    return all_node_ids, allocations, len(tier0_nodes), len(tier1_nodes)
 
 
 def build_qemu_cmd(
@@ -348,13 +404,23 @@ def build_qemu_cmd(
     mem_args: List[str] = []
     node_args: List[str] = []
 
-    node_to_memidx: Dict[int, int] = {}
-    for mem_idx, (node_id, size_mb) in enumerate(allocations):
+    node_to_memid: Dict[int, str] = {}
+    for node_id, size_mb in allocations:
         out = RC.alloc_mem(node_id, vmid, size_mb)
         if not out:
             raise RuntimeError("alloc-mem returned empty output; cannot build memdev argument")
+
+        mem_id = None
+        for part in out.split(","):
+            part = part.strip()
+            if part.startswith("id="):
+                mem_id = part.split("=", 1)[1]
+                break
+        if not mem_id:
+            raise RuntimeError(f"alloc-mem returned invalid id field: {out}")
+
         mem_args.append(f"-object memory-backend-file,share=on,{out}")
-        node_to_memidx[node_id] = mem_idx
+        node_to_memid[node_id] = mem_id
 
     first_mem_node = allocations[0][0] if allocations else None
     for node_id in all_node_ids:
@@ -362,12 +428,12 @@ def build_qemu_cmd(
         if not out:
             raise RuntimeError("get-node-info returned empty output; cannot build numa node argument")
         base = f"-numa node,{out},seg-id=0"
-        if node_id in node_to_memidx:
-            mem_idx = node_to_memidx[node_id]
+        if node_id in node_to_memid:
+            mem_id = node_to_memid[node_id]
             if node_id == first_mem_node:
-                node_args.append(f"{base},memdev=mem{mem_idx},cpus={node0_vcpu_range}")
+                node_args.append(f"{base},memdev={mem_id},cpus={node0_vcpu_range}")
             else:
-                node_args.append(f"{base},memdev=mem{mem_idx}")
+                node_args.append(f"{base},memdev={mem_id}")
         else:
             node_args.append(base)
 
@@ -475,23 +541,10 @@ def handle_create_vm(args: argparse.Namespace, qemu_bin: str) -> int:
         dry_run=args.dry_run,
     )
 
-    pool_nodes = get_mem_pool_nodes()
-    all_node_ids = sorted({n.node_id for n in pool_nodes})
-    tier0_node_ids = choose_nodes_for_tier(pool_nodes, 0, cfg.channels, "local memory (DIMM)")
-    tier1_node_ids = choose_nodes_for_tier(pool_nodes, 1, cfg.cxl_channels, "CXL memory") if cfg.cxl_channels > 0 else []
-
-    tier0_total_available = sum(1 for n in pool_nodes if n.tier_id == 0)
-    tier1_total_available = sum(1 for n in pool_nodes if n.tier_id == 1)
+    all_node_ids, allocations, tier0_count, tier1_count = build_memory_plan(cfg)
     print(f"[info] total available channels: {len(all_node_ids)}")
-    print(f"[info] local memory (DIMM) channels: {tier0_total_available}")
-    print(f"[info] CXL memory channels: {tier1_total_available}")
-
-    allocations: List[Tuple[int, int]] = []
-    for node_id, size_mb in zip(tier0_node_ids, split_memory(cfg.memory_mb, cfg.channels)):
-        allocations.append((node_id, size_mb))
-    if cfg.cxl_channels > 0:
-        for node_id, size_mb in zip(tier1_node_ids, split_memory(cfg.cxl_memory_mb, cfg.cxl_channels)):
-            allocations.append((node_id, size_mb))
+    print(f"[info] local memory (DIMM) channels: {tier0_count}")
+    print(f"[info] CXL memory channels: {tier1_count}")
 
     vmid = select_vmid()
     create_out = RC.create_vm(vmid, cfg.cpu_set)
@@ -534,8 +587,7 @@ def handle_create_vm(args: argparse.Namespace, qemu_bin: str) -> int:
             time.sleep(1.0)
             ret = proc.poll()
             if ret is not None:
-                print("QEMU launch failed.", file=sys.stderr)
-                print(f"log path: {log_path}", file=sys.stderr)
+                print(f"[error] QEMU launch failed; check log: {log_path}", file=sys.stderr)
                 raise RuntimeError(f"qemu exited early with code {ret}")
 
             qemu_started = True
