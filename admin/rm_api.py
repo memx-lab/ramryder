@@ -63,3 +63,9 @@ class ResourceClient:
 
     def free_mem(self, vid: int, memid: int) -> str:
         return self.send(f"free-mem vid={vid} memid={memid}")
+
+    def attach_mem(self, memid: int, vid: int, nid: int) -> str:
+        return self.send(f"attach-mem memid={memid} vid={vid} nid={nid}")
+
+    def detach_mem(self, memid: int, vid: int) -> str:
+        return self.send(f"detach-mem memid={memid} vid={vid}")

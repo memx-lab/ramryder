@@ -292,6 +292,17 @@ def build_parser(default_img: str) -> argparse.ArgumentParser:
     destroy_parser = subparsers.add_parser("destroy-vm", help="Destroy a VM and release resources")
     destroy_parser.add_argument("--vmid", required=True, type=int, help="VM ID to destroy")
 
+    attach_parser = subparsers.add_parser("attach-mem", help="Allocate and hotplug memory to an existing VM")
+    attach_parser.add_argument("--vmid", required=True, type=int, help="Target VM ID")
+    attach_parser.add_argument("--memory", required=True, help="Local memory (DIMM) in MB or GB (e.g. 1024M, 1G)")
+    attach_parser.add_argument("--channels", type=int, default=0, help="Local memory channel count. 0 means use existing allocated channels")
+    attach_parser.add_argument("--cxl-memory", help="CXL memory in MB or GB (e.g. 1024M, 1G)")
+    attach_parser.add_argument("--cxl-channels", type=int, default=0, help="CXL channel count. 0 means use existing allocated channels")
+
+    detach_parser = subparsers.add_parser("detach-mem", help="Hotunplug memory from VM and release pool allocation")
+    detach_parser.add_argument("--vmid", required=True, type=int, help="Target VM ID")
+    detach_parser.add_argument("--memid", required=True, type=int, help="Memory device ID (memX -> X)")
+
     query_parser = subparsers.add_parser("query", help="Query resource manager state")
     query_parser.add_argument("--type", required=True, choices=["mempool", "vm"], help="Query target: mempool or vm")
 
@@ -363,6 +374,66 @@ def choose_allocations_for_tier(
     # Deterministic order by node id for stable command lines.
     selected.sort(key=lambda x: x[0])
     return selected
+
+
+def get_vm_mem_nodes(vmid: int) -> List[int]:
+    output = RC.get_vms()
+    in_target = False
+    nodes: List[int] = []
+    for raw in output.splitlines():
+        line = raw.strip()
+        if line.startswith("VM id="):
+            in_target = line.startswith(f"VM id={vmid} ")
+            continue
+        if in_target and line.startswith("memdev="):
+            parts = line.split()
+            for p in parts:
+                if p.startswith("node="):
+                    try:
+                        nodes.append(int(p.split("=", 1)[1]))
+                    except ValueError:
+                        pass
+                    break
+    return sorted(set(nodes))
+
+
+def choose_allocations_for_tier_attach(
+    tier_nodes: List[MemPoolNode],
+    requested_memory_mb: int,
+    requested_channels: int,
+    existing_vm_nodes: List[int],
+    memory_name: str,
+) -> List[Tuple[int, int]]:
+    if requested_memory_mb <= 0:
+        return []
+
+    tier_node_ids = {n.node_id for n in tier_nodes}
+    existing_nodes_in_tier = sorted([nid for nid in existing_vm_nodes if nid in tier_node_ids])
+
+    if requested_channels == 0:
+        if not existing_nodes_in_tier:
+            raise ValueError(
+                f"{memory_name} channels=0 requires existing allocated channels on this tier"
+            )
+        selected_nodes = [n for n in tier_nodes if n.node_id in existing_nodes_in_tier]
+        channel_count = len(selected_nodes)
+    else:
+        if requested_channels < 0:
+            raise ValueError(f"{memory_name} channels must be >= 0")
+        selected_nodes = [n for n in tier_nodes if n.node_id not in existing_nodes_in_tier]
+        channel_count = requested_channels
+        if channel_count > len(selected_nodes):
+            raise ValueError(
+                f"{memory_name} channels ({channel_count}) must be <= available NEW channels ({len(selected_nodes)})"
+            )
+        # limit to the top free channels for better fit
+        selected_nodes = sorted(selected_nodes, key=lambda n: n.free_mb, reverse=True)[:channel_count]
+
+    if requested_memory_mb < channel_count:
+        raise ValueError(f"{memory_name} memory is too small for selected channels")
+
+    sizes = split_memory(requested_memory_mb, channel_count)
+    return choose_allocations_for_tier(selected_nodes, sizes, memory_name)
 
 
 def build_memory_plan(cfg: VmConfig) -> Tuple[List[int], List[Tuple[int, int]], int, int]:
@@ -614,6 +685,101 @@ def handle_create_vm(args: argparse.Namespace, qemu_bin: str) -> int:
     return 0
 
 
+def handle_attach_mem(args: argparse.Namespace) -> int:
+    if args.cxl_memory is None and args.cxl_channels != 0:
+        raise ValueError("--cxl-memory is required when --cxl-channels is set")
+
+    vmid = args.vmid
+    local_memory_mb = parse_memory_to_mb(args.memory)
+    local_channels = args.channels
+    cxl_memory_mb = parse_memory_to_mb(args.cxl_memory) if args.cxl_memory else 0
+    cxl_channels = args.cxl_channels
+
+    if local_channels < 0:
+        raise ValueError("--channels must be >= 0")
+    if cxl_channels < 0:
+        raise ValueError("--cxl-channels must be >= 0")
+    if cxl_memory_mb == 0 and cxl_channels > 0:
+        raise ValueError("--cxl-memory must be > 0 when --cxl-channels > 0")
+
+    pool_nodes = get_mem_pool_nodes()
+    tier0_nodes = [n for n in pool_nodes if n.tier_id == 0]
+    tier1_nodes = [n for n in pool_nodes if n.tier_id == 1]
+    existing_nodes = get_vm_mem_nodes(vmid)
+    if not existing_nodes:
+        raise ValueError(
+            f"VM {vmid} has no allocated memory channels. Use --channels > 0 to add new channels."
+        )
+
+    allocations: List[Tuple[int, int]] = []
+    local_allocations = choose_allocations_for_tier_attach(
+        tier0_nodes, local_memory_mb, local_channels, existing_nodes, "local memory (DIMM)"
+    )
+    for item in local_allocations:
+        allocations.append(item)
+
+    cxl_allocations = choose_allocations_for_tier_attach(
+        tier1_nodes, cxl_memory_mb, cxl_channels, existing_nodes, "CXL memory"
+    )
+    for item in cxl_allocations:
+        allocations.append(item)
+    if not allocations:
+        raise ValueError("no memory requested to attach")
+
+    allocated_memids: List[int] = []
+    try:
+        for node_id, size_mb in allocations:
+            out = RC.alloc_mem(node_id, vmid, size_mb)
+            mem_id_str = None
+            for part in out.split(","):
+                part = part.strip()
+                if part.startswith("id="):
+                    mem_id_str = part.split("=", 1)[1]
+                    break
+            if not mem_id_str or not mem_id_str.startswith("mem"):
+                raise RuntimeError(f"alloc-mem returned invalid id field: {out}")
+            memid = int(mem_id_str[3:])
+            allocated_memids.append(memid)
+
+            attach_out = RC.attach_mem(memid, vmid, node_id)
+            if "success" not in attach_out.lower():
+                raise RuntimeError(
+                    f"attach-mem failed for vmid={vmid}, memid={memid}, nid={node_id}: {attach_out}"
+                )
+
+        memid_str = ",".join(str(m) for m in allocated_memids)
+        print(f"[info] attach-mem success: vmid={vmid} allocations={len(allocations)} memids={memid_str}")
+    except Exception:
+        for memid in allocated_memids:
+            try:
+                _ = RC.free_mem(vmid, memid)
+            except Exception:
+                pass
+        raise
+
+    return 0
+
+
+def handle_detach_mem(args: argparse.Namespace) -> int:
+    vmid = args.vmid
+    memid = args.memid
+
+    detach_out = RC.detach_mem(memid, vmid)
+    if "success" not in detach_out.lower():
+        raise RuntimeError(
+            f"detach-mem failed for vmid={vmid}, memid={memid}: {detach_out}"
+        )
+
+    free_out = RC.free_mem(vmid, memid)
+    if "success" not in free_out.lower():
+        raise RuntimeError(
+            f"free-mem failed for vmid={vmid}, memid={memid}: {free_out}"
+        )
+
+    print(f"[info] detach-mem success: vmid={vmid} memid={memid}")
+    return 0
+
+
 def handle_query(args: argparse.Namespace) -> int:
     if args.type == "mempool":
         print(RC.get_mem_pool())
@@ -633,6 +799,10 @@ def main() -> int:
         return handle_create_vm(args, qemu_bin)
     elif args.command == "destroy-vm":
         return handle_destroy_vm(args)
+    elif args.command == "attach-mem":
+        return handle_attach_mem(args)
+    elif args.command == "detach-mem":
+        return handle_detach_mem(args)
     elif args.command == "query":
         return handle_query(args)
     else:
