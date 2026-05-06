@@ -269,7 +269,7 @@ def is_tcp_port_in_use(port: int) -> bool:
 
 
 def build_parser(default_img: str) -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="RamRyder VM CLI")
+    parser = argparse.ArgumentParser(description="RamRyder Resource Manager (RM) CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     create_parser = subparsers.add_parser("create-vm", help="Create and launch a VM")
@@ -285,6 +285,10 @@ def build_parser(default_img: str) -> argparse.ArgumentParser:
 
     destroy_parser = subparsers.add_parser("destroy-vm", help="Destroy a VM and release resources")
     destroy_parser.add_argument("--vmid", required=True, type=int, help="VM ID to destroy")
+
+    query_parser = subparsers.add_parser("query", help="Query resource manager state")
+    query_parser.add_argument("--type", required=True, choices=["mempool", "vm"], help="Query target: mempool or vm")
+
     return parser
 
 
@@ -558,6 +562,16 @@ def handle_create_vm(args: argparse.Namespace, qemu_bin: str) -> int:
     return 0
 
 
+def handle_query(args: argparse.Namespace) -> int:
+    if args.type == "mempool":
+        print(RC.get_mem_pool())
+    elif args.type == "vm":
+        print(RC.get_vms())
+    else:
+        raise ValueError(f"unknown query type: {args.type}")
+    return 0
+
+
 def main() -> int:
     qemu_bin, default_img = build_paths()
     parser = build_parser(default_img)
@@ -567,6 +581,8 @@ def main() -> int:
         return handle_create_vm(args, qemu_bin)
     elif args.command == "destroy-vm":
         return handle_destroy_vm(args)
+    elif args.command == "query":
+        return handle_query(args)
     else:
         raise ValueError(f"unknown command: {args.command}")
 
