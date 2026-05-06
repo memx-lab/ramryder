@@ -8,7 +8,7 @@ RamRyder is a software-defined elastic memory system for cloud virtual machines.
 
 The main components of RamRyder include a user-space resource manager, a hypervisor extended from QEMU, and a guest Linux kernel.
 
-# Get Started
+# Getting Started
 
 This page describes how to build RamRyder, configure the resource manager, and
 manage VMs with `ramryder_cli`.
