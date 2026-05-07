@@ -180,14 +180,3 @@ Then reboot the VM and select the new kernel `Linux 6.3.0-ramos+`.
 Note that `INSTALL_MOD_STRIP=1` removes debug symbols from kernel modules. This reduces
 build time and saves storage space, but you may want to keep debug symbols if
 you plan to use `gdb`.
-
-5\. Boot Updates
-
-These steps are optional because `make install` already handles the required
-boot updates in most cases. The commands below are kept here for reference in
-case the new kernel does not appear after reboot.
-
-```bash
-update-initramfs -c -k [kernel version full name]
-update-grub
-```
