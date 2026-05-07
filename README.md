@@ -177,6 +177,20 @@ sudo make install
 
 Then reboot the VM and select the new kernel `Linux 6.3.0-ramos+`.
 
-Note that `INSTALL_MOD_STRIP=1` removes debug symbols from kernel modules. This reduces
-build time and saves storage space, but you may want to keep debug symbols if
-you plan to use `gdb`.
+Note that `INSTALL_MOD_STRIP=1` removes debug symbols from kernel modules. This reduces build time and saves storage space, but you may want to keep debug symbols if you plan to use `gdb`.
+
+# Detailed Instructions
+
+For detailed installation steps, configuration guidance, and module-level explanations, please refer to the documentation site.
+
+## Hardware Support
+
+- [DIMM Setup](https://ramryder-project.github.io/docs/hardware-support/dimm)
+- [PMem Setup](https://ramryder-project.github.io/docs/hardware-support/pmem)
+- [CXL Setup](https://ramryder-project.github.io/docs/hardware-support/cxl)
+
+## Core Components
+
+- [Resource Manager Setup](https://ramryder-project.github.io/docs/getting-started/resource-manager-setup)
+- [Virtual Machine Setup](https://ramryder-project.github.io/docs/getting-started/virtual-machine-setup)
+- [Kernel Installation](https://ramryder-project.github.io/docs/getting-started/kernel-installation)
