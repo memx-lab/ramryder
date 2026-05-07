@@ -8,10 +8,9 @@ RamRyder is a software-defined elastic memory system for cloud virtual machines.
 
 The main components of RamRyder include a user-space resource manager, a hypervisor extended from QEMU, and a guest Linux kernel.
 
-# Getting Started
+# Quick Start
 
-This page describes how to build RamRyder, configure the resource manager, and
-manage VMs with `ramryder_cli`.
+This page describes how to build RamRyder, configure the resource manager, and manage VMs with `ramryder_cli`.
 
 ## Get source code
 
@@ -19,27 +18,23 @@ manage VMs with `ramryder_cli`.
 git clone --recurse-submodules git@github.com:memx-lab/ramryder.git
 ```
 
-If you already cloned the repository without `--recurse-submodules`, run:
-
-```bash
-git submodule update --init --recursive
-```
-
 ## Build project
 
 From the RamRyder directory:
 
-### Build resource manager
-
+### Install dependency
 ```bash
 ./scripts/pkgdep.sh
+```
+
+### Build resource manager
+```bash
 # use --arch-cpu-amd to configure if you run on AMD server. Default: Intel
 ./configure [--arch-cpu-amd]
 make
 ```
 
 ### Build QEMU
-
 ```bash
 cd qemu
 mkdir -p build
@@ -51,13 +46,11 @@ cd ../..
 
 ## Configure hardware resource
 
-### 1) Configure hardware
+### Configure hardware
 
-RamRyder supports multiple memory hardware types (for example DIMM, PMEM, and CXL). Before configuring resource manager, first prepare and expose your memory devices correctly on the host.
+RamRyder supports multiple memory hardware types (for example DIMM, PMEM, and CXL). Before configuring resource manager, first prepare and expose your memory devices correctly on the host. For hardware-specific setup steps, see [Document - Hardware Support](https://memx-lab.github.io/docs/hardware-support/overview).
 
-For hardware-specific setup steps, see [Document - Hardware Support](https://memx-lab.github.io/docs/hardware-support/overview).
-
-### 2) Configure resource manager file
+### Set configuration file
 
 Create `src/elesticmm.conf` (or copy from `src/elasticmm_default.conf`) and
 configure your memory devices:
@@ -90,8 +83,6 @@ For each DAX device:
 - use `tier_id=1` for CXL memory
 - keep `dax_id` unique within the same `tier_id`
 
-For details, refer to [Document - Get Started](https://memx-lab.github.io/docs/memx-ramryder/build)
-
 ## Start resource manager
 
 ```bash
@@ -111,121 +102,89 @@ tar -xf nvcloud-image-clean.tar.xz
 
 Then refer to `readme.txt` inside the package for login information.
 
-## VM management
-
-All VM operations are managed by `admin/ramryder_cli`. You can use
-`ramryder_cli` to query resource allocations, allocate resources, and create
-VMs.
-
-```bash
-cd /path/to/ramryder
-./admin/ramryder_cli --help
-```
-
-### 1) Query resource status
-
-Memory pool:
-
-```bash
-./admin/ramryder_cli query --type mempool
-```
-
-VM allocation status:
-
-```bash
-./admin/ramryder_cli query --type vm
-```
-
-### 2) Create VM
-
-Create a VM with local memory (DIMM):
-
-```bash
-./admin/ramryder_cli create-vm \
-  --cpu-set 0-9,20-29 \
-  --memory 150G \
-  --channels 6
-```
+## Create VM
+All VM operations are managed by `admin/ramryder_cli`. You can use this tool to query resource allocations, allocate resources, and create VMs. Use `ramryder_cli --help` to check usage.
 
 Create a VM with DIMM + CXL memory:
-
 ```bash
 ./admin/ramryder_cli create-vm \
   --cpu-set 0-9,20-29 \
   --memory 100G \
   --channels 4 \
   --cxl-memory 50G \
-  --cxl-channels 2
+  --cxl-channels 2 \
+  --image /path/to/nvcloud-image-clean.qcow2
 ```
 
 Important behavior:
 - `--memory/--channels` are for local memory (DIMM, tier 0).
 - `--cxl-memory/--cxl-channels` are for CXL memory (tier 1).
-- memory size supports `M` or `G` units (for example `1024M`, `150G`).
-- default SSH forwarding port is `2806 + VMID`.
-- if that port is occupied, CLI chooses another available port.
-- vCPU pinning is enabled by default; disable with `--disable-vcpu-pin`.
-
-Dry-run example (execute RM allocation flow and auto cleanup without launching
-VM):
-
-```bash
-./admin/ramryder_cli create-vm \
-  --cpu-set 0-9,20-29 \
-  --memory 150G \
-  --channels 6 \
-  --dry-run
-```
-
-### 3) Dynamically add memory to a running VM
-
-Add DIMM memory from new channels:
-
-```bash
-./admin/ramryder_cli attach-mem \
-  --vmid 0 \
-  --memory 20G \
-  --channels 2
-```
-
-Add DIMM memory only from channels already allocated to this VM:
-
-```bash
-./admin/ramryder_cli attach-mem \
-  --vmid 0 \
-  --memory 10G \
-  --channels 0
-```
-
-Add CXL memory:
-
-```bash
-./admin/ramryder_cli attach-mem \
-  --vmid 0 \
-  --memory 0M \
-  --channels 0 \
-  --cxl-memory 20G \
-  --cxl-channels 1
-```
-
-`attach-mem` prints allocated `memid` values. Keep them for detach operations.
-
-### 4) Dynamically remove memory
-
-```bash
-./admin/ramryder_cli detach-mem --vmid 0 --memid 3
-```
-
-`memid` is numeric (`mem3 -> 3`).
-
-### 5) Destroy VM
-
-```bash
-./admin/ramryder_cli destroy-vm --vmid 0
-```
-
-This command kills the VM process and releases all resource-manager allocations.
+- `--image` sets the VM qcow2 path (default: `~/images/nvcloud-image-clean.qcow2`).
+- SSH forwarding port is generated automatically.
+- use `ssh -p <port> <user>@localhost` to log into the VM.
 
 ## Update guest kernel
+After VM is ready, log into VM and then update guest kernel as follows.
 
-After VM is ready, log into VM and then follow [RAMOS Get Started](https://memx-lab.github.io/docs/memx-ramos/build) to update guest kernel.
+### Get source code
+
+```bash
+git clone git@github.com:memx-lab/ramos.git
+cd ramos
+```
+
+### Prepare
+Install the required build dependencies first.
+
+Run all remaining commands in the kernel source tree:
+
+```bash
+sudo apt-get update
+sudo apt-get install build-essential libncurses5 libncurses5-dev bin86 kernel-package libssl-dev bison flex libelf-dev dwarves
+```
+
+### Configure kernel
+
+Start from the current system configuration:
+
+```bash
+cp /boot/config-$(uname -r) .config
+make olddefconfig
+```
+
+Then open the configuration menu:
+
+```bash
+make menuconfig
+```
+
+In `make menuconfig`, enable the following RAMOS options under `General setup`:  
+- `RAMOS NUMA abstraction support`
+- `RAMOS debug mode` (optional, for more verbose log output)
+
+### Build and install
+Use the following commands for a full kernel build and installation:
+
+```bash
+make -j$(nproc)
+make -j$(nproc) modules
+sudo make INSTALL_MOD_STRIP=1 modules_install
+sudo make install
+```
+
+Then reboot the VM and select new kernel `Linux 6.3.0-ramos+`.
+
+Note that `INSTALL_MOD_STRIP=1` removes debug symbols from kernel modules. This reduces
+build time and saves storage space, but you may want to keep debug symbols if
+you plan to use `gdb`.
+
+### Boot updates
+
+These steps are optional because `make install` already handles the required
+boot updates in most cases. The commands below are kept here for reference in
+case the new kernel does not appear after reboot.
+
+```bash
+update-initramfs -c -k [kernel version full name]
+update-grub
+```
