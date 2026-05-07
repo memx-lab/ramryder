@@ -294,7 +294,7 @@ def build_parser(default_img: str) -> argparse.ArgumentParser:
 
     attach_parser = subparsers.add_parser("attach-mem", help="Allocate and hotplug memory to an existing VM")
     attach_parser.add_argument("--vmid", required=True, type=int, help="Target VM ID")
-    attach_parser.add_argument("--memory", required=True, help="Local memory (DIMM) in MB or GB (e.g. 1024M, 1G)")
+    attach_parser.add_argument("--memory", default="0M", help="Local memory (DIMM) in MB or GB (e.g. 1024M, 1G). Optional; default is 0M.")
     attach_parser.add_argument("--channels", type=int, default=0, help="Local memory channel count. 0 means use existing allocated channels")
     attach_parser.add_argument("--cxl-memory", help="CXL memory in MB or GB (e.g. 1024M, 1G)")
     attach_parser.add_argument("--cxl-channels", type=int, default=0, help="CXL channel count. 0 means use existing allocated channels")
