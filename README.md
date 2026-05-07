@@ -16,7 +16,7 @@ This page describes how to build RamRyder, configure the resource manager, and m
 
 1\. Get Source Code
 ```bash
-git clone --recurse-submodules git@github.com:memx-lab/ramryder.git
+git clone --recurse-submodules git@github.com:ramryder-project/ramryder.git
 ```
 
 2\. Install Dependencies
@@ -46,7 +46,7 @@ cd ../..
 
 1\. Configure Hardware
 
-RamRyder supports multiple memory hardware types (for example, DIMM, PMEM, and CXL). Before configuring the resource manager, prepare and expose your memory devices correctly on the host. For hardware-specific setup steps, see [Document - Hardware Support](https://memx-lab.github.io/docs/hardware-support/overview).
+RamRyder supports multiple memory hardware types (for example, DIMM, PMEM, and CXL). Before configuring the resource manager, prepare and expose your memory devices correctly on the host. For hardware-specific setup steps, see [Document - Hardware Support](https://ramryder-project.github.io/docs/hardware-support/overview).
 
 2\. Set Configuration File
 
@@ -130,7 +130,7 @@ After the VM is ready, log in to the VM and then update the guest kernel as foll
 1\. Get Source Code
 
 ```bash
-git clone git@github.com:memx-lab/ramos.git
+git clone git@github.com:ramryder-project/ramos.git
 cd ramos
 ```
 
